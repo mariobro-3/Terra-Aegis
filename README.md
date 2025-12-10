@@ -1,73 +1,110 @@
-# SOLAR AEGIS: The Obsidian Wing
+TERRA AEGIS – README
 
-**Solar Aegis: The Obsidian Wing** is an ambitious browser-based 3D space combat simulator. It combines the thrill of arcade space combat with the awe-inspiring scale of cosmic mega-structures and the frantic enemy pressure of a self-replicating swarm.
+Overview
 
-> *Pilot a legendary, scavenged starfighter in a desperate defense of the ultimate mega-structure: a Dyson Sphere harnessing the Sun, currently being devoured by an ancient, self-replicating robotic swarm.*
+Terra Aegis is a modernized, retro-styled arcade shooter inspired by classic Space Invaders. You command a starfighter defending Earth against escalating alien waves, bosses, hazards, and environmental threats. The game features multiple play modes, power-ups, destructible barriers, UFO bonuses, and a full CRT-style visual aesthetic.
 
-## 📜 The Premise
+Game Modes
 
-Humanity found the **Aegis**—a Dyson Sphere built by a vanished progenitor race—thousands of years ago. It ushered in a golden age of limitless energy. But now, the sphere's ancient maintenance machines, the **Corroders**, have awoken. Consuming metal and energy to endlessly multiply, they are eating the Aegis from the inside out.
+Classic Mode – Standard wave progression. Difficulty increases each wave.
+Time Attack – Score as much as possible before the timer runs out.
+Score Attack – Limited lives, maximum scoring efficiency.
+Survival – Survive as long as possible against rapidly escalating difficulty.
 
-You pilot the **Obsidian Wing**, a relic found deep within Mercury's hangars: an ancient X-Wing archetype craft, superior to modern tech, designed to withstand the inferno.
+Controls
 
-## 🌍 The World: A Trinity of Scale
+Move:
+Mouse movement
+OR ← / → (A / D)
 
-The game is defined by three distinct zones, seamlessly connected by flight:
+Fire:
+Click
+OR Spacebar
 
-### 1. The Aegis Shell (The Dyson Sphere)
-The primary battlefield. A mechanical landscape the size of a solar system.
-*   **Visuals:** Endless canyons of machinery, heat-sink skyscrapers, and abandoned alien cities.
-*   **Gameplay:** "Trench run" style combat against the surface. You are a speck against the machine.
-*   **The Hazard:** **Structural Integrity**. If Corroders eat too much, sectors collapse, venting plasma.
+Pause:
+ESC
 
-### 2. Mercury (The Inner Sanctum)
-The power coupling inside the sphere.
-*   **Visuals:** A blinding wall of solar fire (the Sun) and a scorched rock crisscrossed with glowing conduits.
-*   **Gameplay:** High-risk, high-reward runs to defend critical power junctions. Your shields constantly drain from the heat.
+HUD Elements
 
-### 3. Venus (The Outer Bulwark)
-Humanity's last bastion outside the sphere.
-*   **Visuals:** Floating aerostat cities above acidic clouds.
-*   **Gameplay:** The **Hub** for repairs, upgrades, and mission selection.
-*   **Landing:** Harrowing descents through turbulent acid storms.
+Score – Total points earned
+Wave – Current wave level
+High Score – Stored locally
+Lives – Remaining player lives
+Ammo – Shots left
+Timer – Only appears in Time Attack mode
 
-## 🚀 The Ship: The "Obsidian Wing"
+Core Mechanics
 
-A scavenger's X-Wing, adapted for the job.
+Player
+Starts with: 3 lives, 30 ammo
+Weapon power levels increase automatically with score (up to 4 levels)
+Weapon types: bullets → lasers → missiles (via power-ups)
+Optional Full Auto mode (temporary boost)
+Defensive Shield can absorb 3 hits
 
-*   **S-Foils (Strike Foils):**
-    *   **Closed:** Max speed for travel between Venus and the Sphere. Weapons offline.
-    *   **Attack (Open "X"):** Engages heat vents and weapons. Essential for combat and Mercury runs.
-*   **Upgrades:** Ancient tech upgrades (heat shielding, anti-corrosion armor, quad-lasers).
+Barriers
+Player-protecting destructible blocks
+Amount adjustable (0–7) on the main menu
+Absorb enemy fire and meteors
 
-## 👾 The Enemy: The Corroders
+Enemies
+Invader types:
+Small (Squid): Fast shots
+Medium (Crab): Wiggly shots
+Large (Octopus): Standard fire
 
-A swarm intelligence that acts like a liquid metal river.
+UFO:
+Flies across the top of the screen
+Grants +10 ammo; every third kill grants +1 life
 
-*   **Mites:** Dog-sized units that jump on your cockpit and chew through the glass.
-*   **Processors:** Tank-sized heavy units that devour hull plating.
-*   **Assemblers:** Massive, walking factories that spawn endless streams of Mites. You must fly *inside* them to destroy their cores.
+Bosses:
+Appear every 11 waves (mega bosses at larger intervals)
+Multi-phase fights with targeted shots, spreads, and special attacks
+Mega bosses can spawn Black Holes (gravity traps)
 
-## 🎮 Current Prototype Features (v2)
+Hazards
+Meteors: Falling projectiles damaging anything they hit
+Black Holes: Pull the player/projectiles in; lethal on contact
 
-The current codebase is a functional "Hello World" proving the core engine concepts:
+Power-Ups
+Dropped randomly from destroyed invaders:
+Life – +1 life
+Shield – Recharges shield
+Laser – Stronger firing mode
+Missile – AoE splash damage
+Ammo – +Ammo
+Full Auto – Rapid-fire burst
 
-*   **Engine:** Babylon.js (WebGL)
-*   **Flight Model:** Arcade physics with "Cinematic Banking" (visual rolling on turns).
-*   **Environment:** A massive wireframe Dyson Sphere shell (400 unit radius).
-*   **Combat:**
-    *   **Weapon:** Green Plasma Lasers (Spacebar).
-    *   **Targets:** 50+ "Replicator" enemies proceduraly placed on the sphere wall.
-*   **Physics:** Basic collision detection (Ship vs Sphere Hull).
+Scoring
+Standard invaders: 10–30 points depending on type
+UFO kill: reload + possible extra life
+Intercepting enemy bullets: +50 points
+Boss kill: massive score bonus
+Combos: kill streaks increase score; combo resets on timer expiration
 
-## 📦 How to Run Locally
+Difficulty Scaling
+Difficulty increases by:
+Faster grid movement
+More frequent enemy firing
+More rows of invaders
+Faster UFOs
+Faster bosses and additional phases
+Increased hazard frequency
+Every 10-wave cycle increases baseline difficulty further.
 
-Due to browser security policies regarding 3D textures and resources, you must run this via a local web server.
+Technical Notes
+Designed for 1200×700 native resolution
+Auto-scaled to match screen size
+Retro CRT scanline + glow shader overlay
+Audio via embedded base64 WAV samples
+High score stored locally via localStorage
 
-### Using Python (Recommended)
-1.  Open a terminal in the project folder.
-2.  Run:
-    ```bash
-    python -m http.server
-    ```
-3.  Open your browser to `http://localhost:8000`
+Attribution
+Built using HTML5 Canvas, vanilla JavaScript, and custom rendering logic.
+Source file: terraAegis.html
+
+Run the Game
+Open terraAegis.html directly in any modern browser.
+No server required.
+
+Author @photoncmndr on X
