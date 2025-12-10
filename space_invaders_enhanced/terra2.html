@@ -1,0 +1,3260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- Viewport settings optimized for mobile and desktop play -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Terra Aegis</title>
+<style>
+    /* ============================================
+       GLOBAL STYLES - Base styling for entire game
+       ============================================ */
+    /* Black background, green retro terminal color scheme, centered layout */
+    body{
+        margin:0;
+        padding:0;
+        background:#000;
+        color:#0f0;
+        font-family:'Courier New',monospace;
+        min-height:100vh;
+        height:100dvh;
+        width:100vw;
+        overflow:hidden;
+        touch-action:none;
+    }
+    
+    /* Main game container - holds canvas and UI overlays with retro green glow */
+    #game-container{
+        --game-scale:1;
+        position:absolute;
+        top:50%;
+        left:50%;
+        width:1200px;
+        height:700px;
+        box-sizing:border-box;
+        transform:translate(-50%,-50%) scale(var(--game-scale));
+        box-shadow:0 0 30px rgba(0,255,0,0.4);
+        border:3px solid #0f0;
+        overflow:hidden;
+        background-color:#000;
+        transform-origin:center center;
+        will-change:transform;
+    }
+    
+    /* Canvas element where all game graphics are rendered */
+    canvas{display:block;background:#000;}
+    
+    /* Transparent overlay layer for HUD and menus - sits on top of canvas */
+    #ui-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+    
+    /* Top HUD bar showing score, wave, lives, ammo with gradient fade */
+    .hud-top{display:flex;justify-content:space-between;padding:15px;font-size:20px;text-transform:uppercase;letter-spacing:2px;background:linear-gradient(to bottom,rgba(0,0,0,0.9),transparent);}
+    
+    /* Generic overlay message styling (used for pause screen) */
+    .overlay-message{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.92);padding:25px 40px;border:2px solid #0f0;box-shadow:0 0 15px #0f0;text-align:center;pointer-events:auto;text-transform:uppercase;letter-spacing:2px;}
+    .overlay-message p{margin:8px 0;font-size:20px;}
+    
+    /* Start screen and game over screen styling - centered modals */
+    #start-screen,#game-over-screen{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.95);padding:40px;border:2px solid #0f0;box-shadow:0 0 20px #0f0;text-align:center;pointer-events:auto;z-index:10;min-width: 300px;}
+    
+    /* Utility class to hide elements */
+    .hidden{display:none!important;}
+    
+    /* Title text with glowing green shadow */
+    h1{font-size:40px;margin:0 0 20px 0;text-shadow:0 0 15px #0f0;}
+    p {margin: 10px 0; font-size: 16px;}
+    
+    /* Retro arcade-style buttons with hover effects */
+    button{background:#0f0;color:#000;border:none;padding:15px 35px;font-size:22px;font-weight:bold;cursor:pointer;margin:10px;text-transform:uppercase;transition:.2s;font-family:inherit;}
+    button:hover{background:#fff;box-shadow:0 0 20px #fff;}
+    
+    /* Warning indicator when ammo is low - pulsing red effect */
+    .low-ammo{color:#f00!important;text-shadow:0 0 10px #f00!important;animation:pulse 1s infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+    
+    /* CRT monitor effect - scanlines and pixel grid overlay for retro feel */
+    .crt::after{content:"";position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(transparent 50%,rgba(0,255,0,0.05) 50%),linear-gradient(90deg,rgba(0,255,0,0.03) 1px,transparent 1px);background-size:100% 4px,4px 100%;pointer-events:none;mix-blend-mode:overlay;}
+    
+    /* ============================================
+       RESPONSIVE ADJUSTMENTS - Mobile optimization
+       ============================================ */
+    @media (max-width: 600px) {
+        h1 { font-size: 30px; }
+        .hud-top { font-size: 14px; padding: 10px; }
+    }
+</style>
+</head>
+<body>
+
+<!-- ============================================
+     GAME CONTAINER STRUCTURE
+     Canvas element + UI overlays
+     ============================================ -->
+
+<div id="game-container" class="crt">
+    <!-- Main drawing canvas - 1200x700 game area -->
+    <canvas id="gameCanvas" width="1200" height="700"></canvas>
+    
+    <!-- UI Layer - All interface elements overlaid on canvas -->
+    <div id="ui-layer">
+        <!-- Top HUD showing game statistics -->
+        <div class="hud-top">
+            <div>Score: <span id="score">0</span></div>
+            <div>Wave: <span id="wave">1</span></div>
+            <div>High: <span id="high-score">0</span></div>
+            <div style="color:#b300ff; text-shadow:0 0 5px #b300ff;">Lives: <span id="lives">3</span></div>
+            <div style="color:#00ffff; text-shadow:0 0 5px #00ffff;">Shield: <span id="shield-val">0</span></div>
+            <div>Ammo: <span id="ammo">30</span></div>
+            <!-- Timer display for time attack mode only -->
+            <div id="extra-info" style="display:none; color:#ffeb3b;">Time: <span id="timer">0</span></div>
+        </div>
+        
+        <!-- Pause menu overlay -->
+        <div id="pause-overlay" class="overlay-message hidden">
+            <p>PAUSED</p>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <button onclick="togglePause()">RESUME</button>
+                <button onclick="returnToMenu()">MAIN MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main menu / Start screen -->
+    <div id="start-screen">
+        <h1> TERRA AEGIS</h1>
+        <p>DEFEND EARTH FROM THE ALIEN INVASION</p>
+        <p id="menu-highscore" style="color:#ffff00; font-weight:bold; margin-bottom:20px; text-shadow:0 0 10px #ff0000;">HIGH SCORE: 0</p>
+        
+        <!-- Game mode selection buttons -->
+        <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
+            <button onclick="startGame('classic')" style="min-width:250px;">CLASSIC MODE</button>
+            <button onclick="startGame('time_attack')" style="min-width:250px;">TIME ATTACK</button>
+            <button onclick="startGame('score_attack')" style="min-width:250px;">SCORE ATTACK</button>
+            <button onclick="startGame('survival')" style="min-width:250px;">SURVIVAL</button>
+        </div>
+        
+        <div style="margin-top:20px; width: 80%; max-width: 300px; text-align: center; margin-left: auto; margin-right: auto;">
+            <label for="barrier-slider" style="color: #0f0; font-size: 18px; display: block; margin-bottom: 10px;">BARRIERS: <span id="barrier-count-display">4</span></label>
+            <input type="range" id="barrier-slider" min="0" max="7" value="4" style="width: 100%; cursor: pointer; accent-color: #0f0;" oninput="updateBarrierConfig(this.value)">
+        </div>
+
+        <!-- Exit button to return to main site -->
+        <div style="margin-top:20px;">
+             <button onclick="window.location.href='../index.html'" style="background:#333; border:1px solid #666; font-size:16px;">EXIT GAME</button>
+        </div>
+        
+        <!-- Dev Mode Toggle -->
+        <div style="position:absolute; bottom:20px; right:20px; text-align:right;">
+            <button onclick="toggleDevMenu()" style="background:transparent; border:1px solid #333; font-size:12px; padding:5px 10px; color:#555;">DEV MODE</button>
+            <div id="dev-menu" class="hidden" style="margin-top:10px; background:rgba(0,0,0,0.9); padding:10px; border:1px solid #0f0;">
+                <label style="color:#0f0; font-size:14px;">Warp to Wave:</label>
+                <input type="number" id="dev-wave-input" min="1" max="500" value="1" style="background:#000; color:#0f0; border:1px solid #0f0; width:50px; text-align:center;">
+                <button onclick="startDevGame()" style="padding:5px 10px; font-size:12px; margin-top:5px;">WARP</button>
+            </div>
+        </div>
+        
+        <!-- Game instructions and tips -->
+        <p style="color:#ff00ff; font-size: 14px; margin-top:15px;">Shoot UFOs → +10 Ammo • Every 3rd = +1 Life</p>
+        <p style="color:#0ff; font-size: 14px; letter-spacing: 1px;">
+            Controls: Mouse / Arrows to Move • Click / Space to Fire • ESC pauses
+        </p>
+    </div>
+
+    <!-- Game over screen -->
+    <div id="game-over-screen" class="hidden">
+        <h1 style="color:#f00;">GAME OVER</h1>
+        <p id="final-score">Score: 0</p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            <button onclick="startGame(gameMode)">TRY AGAIN</button>
+            <button onclick="returnToMenu()">MAIN MENU</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+'use strict';
+
+// ============================================
+// GAME INITIALIZATION & DOM REFERENCES
+// Grab all HTML elements needed for the game
+// ============================================
+
+// Canvas and rendering context - all graphics drawn here
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('game-container');
+let canvasRect = canvas.getBoundingClientRect();
+let canvasScaleX = canvas.width / canvasRect.width;
+
+// UI element references for updating display
+const scoreEl = document.getElementById('score');
+const waveEl = document.getElementById('wave');
+const highScoreEl = document.getElementById('high-score');
+const ammoEl = document.getElementById('ammo');
+const livesEl = document.getElementById('lives');
+
+// Screen overlays
+const startScreen = document.getElementById('start-screen');
+const gameOverScreen = document.getElementById('game-over-screen');
+const finalScoreEl = document.getElementById('final-score');
+const pauseOverlay = document.getElementById('pause-overlay');
+const menuHighScoreEl = document.getElementById('menu-highscore');
+
+// Update Main Menu High Score on load
+let highScore=localStorage.getItem('invaders_hs')||0;
+if(menuHighScoreEl) menuHighScoreEl.innerText = `HIGH SCORE: ${highScore}`;
+
+// ============================================
+// RESPONSIVE SCALING SYSTEM
+// Automatically scales game to fit different screen sizes
+// ============================================
+const DESIGN_WIDTH=canvas.width;  // Base width: 1200px
+const DESIGN_HEIGHT=canvas.height; // Base height: 700px
+
+// Update cached canvas measurements used for pointer math
+function updateCanvasMetrics(){
+    canvasRect = canvas.getBoundingClientRect();
+    canvasScaleX = canvas.width / Math.max(1, canvasRect.width);
+}
+
+// Calculate and apply scaling to fit viewport while maintaining aspect ratio
+function fitGameToViewport(){
+    const targetWidth=window.innerWidth;
+    const targetHeight=window.innerHeight;
+    const scaleW=targetWidth/DESIGN_WIDTH;
+    const scaleH=targetHeight/DESIGN_HEIGHT;
+    // Scale to fit the smallest dimension (letterboxing) but maximize usage
+    const scale=Math.min(scaleW,scaleH);
+    container.style.setProperty('--game-scale', scale);
+    // Defer rect measurement until layout stabilizes
+    requestAnimationFrame(updateCanvasMetrics);
+}
+window.addEventListener('resize', fitGameToViewport);
+fitGameToViewport();
+
+// ============================================
+// AUDIO & MUSIC SYSTEM
+// Procedurally-generated synth SFX + background score
+// ============================================
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+class RetroFX {
+    constructor(ctx){
+        this.ctx = ctx;
+        this.master = ctx.createGain();
+        this.master.gain.value = 0.125; // Reduced to 50% of music volume (0.25 * 0.5)
+        this.master.connect(ctx.destination);
+        this.noiseBuffer = this.createNoiseBuffer();
+    }
+
+    createNoiseBuffer(){
+        const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 1.5, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for(let i=0;i<data.length;i++){
+            const progress = i / data.length;
+            data[i] = (Math.random()*2 - 1) * (1 - progress); // decay for softer tail
+        }
+        return buffer;
+    }
+
+    playShot(type='bullet', powerLevel=1){
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        if(type==='laser'){
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(1200, now);
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.18);
+            gain.gain.setValueAtTime(0.42, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        }else if(type==='missile'){
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(260, now);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.32);
+            gain.gain.setValueAtTime(0.7, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+        }else{
+            osc.type = 'square';
+            const base = 780 + (powerLevel*140);
+            osc.frequency.setValueAtTime(base, now);
+            osc.frequency.exponentialRampToValueAtTime(base-320, now + 0.13);
+            gain.gain.setValueAtTime(0.4 + powerLevel*0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15 + powerLevel*0.01);
+        }
+
+        osc.connect(gain).connect(this.master);
+        osc.start(now);
+        osc.stop(now + (type==='missile'?0.35:0.18));
+    }
+
+    playExplosion(){
+        const now = this.ctx.currentTime;
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2000, now);
+        filter.frequency.exponentialRampToValueAtTime(180, now + 0.7);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.85, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+
+        noise.connect(filter).connect(gain).connect(this.master);
+        noise.start(now);
+        noise.stop(now + 0.7);
+    }
+
+    playShieldHit(){
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1600, now);
+        osc.frequency.linearRampToValueAtTime(500, now + 0.09);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.45, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+        osc.connect(gain).connect(this.master);
+        osc.start(now);
+        osc.stop(now + 0.12);
+    }
+
+    playPlayerDamage(){
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(240, now);
+        osc.frequency.exponentialRampToValueAtTime(70, now + 0.45);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.7, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+        osc.connect(gain).connect(this.master);
+        osc.start(now);
+        osc.stop(now + 0.46);
+    }
+
+    playBlackHole(){
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(110, now);
+        osc.frequency.linearRampToValueAtTime(25, now + 1.2);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.linearRampToValueAtTime(0.0, now + 1.2);
+
+        const lfo = this.ctx.createOscillator();
+        const lfoGain = this.ctx.createGain();
+        lfo.frequency.value = 6;
+        lfoGain.gain.value = 60;
+        lfo.connect(lfoGain).connect(osc.frequency);
+
+        osc.connect(gain).connect(this.master);
+        osc.start(now);
+        lfo.start(now);
+        osc.stop(now + 1.2);
+        lfo.stop(now + 1.2);
+    }
+
+    playEnemyShot(){
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(500, now);
+        osc.frequency.linearRampToValueAtTime(300, now + 0.18);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc.connect(gain).connect(this.master);
+        osc.start(now);
+        osc.stop(now + 0.2);
+    }
+
+    playLevelUp(){
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        gain.gain.value = 0.35;
+        osc.connect(gain).connect(this.master);
+        osc.frequency.setValueAtTime(660, now);
+        osc.frequency.linearRampToValueAtTime(990, now + 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        osc.start(now);
+        osc.stop(now + 0.4);
+    }
+
+    startUfoHum(){
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const lfo = this.ctx.createOscillator();
+        const lfoGain = this.ctx.createGain();
+
+        osc.type='sine';
+        osc.frequency.value = 280;
+        gain.gain.value = 0.18;
+        lfo.frequency.value = 0.7;
+        lfoGain.gain.value = 18;
+
+        lfo.connect(lfoGain).connect(osc.frequency);
+        osc.connect(gain).connect(this.master);
+        osc.start();
+        lfo.start();
+
+        return ()=>{
+            try{osc.stop();}catch(e){}
+            try{lfo.stop();}catch(e){}
+        };
+    }
+
+    playUfoExplosion(){
+        const now = this.ctx.currentTime;
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, now);
+        filter.frequency.exponentialRampToValueAtTime(30, now + 0.8);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(1.0, now); // Boosted slightly for impact, master volume handles relative mix
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+        noise.connect(filter).connect(gain).connect(this.master);
+        noise.start(now);
+        noise.stop(now + 0.8);
+    }
+}
+
+class RetroMusicEngine{
+    constructor(ctx){
+        this.ctx = ctx;
+        this.master = ctx.createGain();
+        this.master.gain.value = 0.25;
+        this.master.connect(ctx.destination);
+        this.tempo = 112;
+        this.step = 0;
+        this.nextTime = 0;
+        this.lookahead = 0.5;
+        this.isPlaying = false;
+        this.noiseBuffer = this.createNoiseBuffer();
+    }
+
+    createNoiseBuffer(){
+        const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.3, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for(let i=0;i<data.length;i++){
+            data[i] = Math.random()*2 - 1;
+        }
+        return buffer;
+    }
+
+    start(){
+        if(this.isPlaying) return;
+        this.isPlaying = true;
+        this.step = 0;
+        this.nextTime = this.ctx.currentTime;
+        this.schedule();
+    }
+
+    stop(){
+        this.isPlaying = false;
+        if(this.raf) cancelAnimationFrame(this.raf);
+    }
+
+    schedule(){
+        if(!this.isPlaying) return;
+        const stepDur = (60/this.tempo)/2; // 8th notes
+        while(this.nextTime < this.ctx.currentTime + this.lookahead){
+            this.triggerStep(this.nextTime, this.step);
+            this.nextTime += stepDur;
+            this.step = (this.step + 1) % 32;
+        }
+        this.raf = requestAnimationFrame(()=>this.schedule());
+    }
+
+    triggerStep(time, step){
+        if(step % 4 === 0) this.playKick(time);
+        if(step % 4 === 2) this.playSnare(time);
+        this.playHiHat(time);
+        if(step % 2 === 0) this.playBass(time, step);
+        if(step % 4 === 1) this.playLead(time, step);
+    }
+
+    playKick(time){
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(80, time);
+        osc.frequency.exponentialRampToValueAtTime(30, time + 0.25);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.6, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+
+        osc.connect(gain).connect(this.master);
+        osc.start(time);
+        osc.stop(time + 0.26);
+    }
+
+    playSnare(time){
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 2000;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.45, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+        noise.connect(filter).connect(gain).connect(this.master);
+        noise.start(time);
+        noise.stop(time + 0.15);
+    }
+
+    playHiHat(time){
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 5000;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.2, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+        noise.connect(filter).connect(gain).connect(this.master);
+        noise.start(time);
+        noise.stop(time + 0.05);
+    }
+
+    playBass(time, step){
+        const osc = this.ctx.createOscillator();
+        osc.type = 'square';
+        const notes = [0,3,5,7,10,12];
+        const base = 55; // A1
+        const note = notes[(Math.floor(step/2)) % notes.length];
+        const freq = base * Math.pow(2, note/12);
+        osc.frequency.setValueAtTime(freq, time);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.3, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.32);
+
+        osc.connect(gain).connect(this.master);
+        osc.start(time);
+        osc.stop(time + 0.33);
+    }
+
+    playLead(time, step){
+        const osc = this.ctx.createOscillator();
+        osc.type = 'triangle';
+        const leadScale = [12,14,15,19,17,14,15,12];
+        const note = leadScale[step % leadScale.length];
+        const freq = 220 * Math.pow(2, note/12);
+        osc.frequency.setValueAtTime(freq, time);
+        osc.frequency.linearRampToValueAtTime(freq * 1.05, time + 0.25);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.18, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
+
+        const vibrato = this.ctx.createOscillator();
+        const vibratoGain = this.ctx.createGain();
+        vibrato.frequency.value = 5;
+        vibratoGain.gain.value = 8;
+        vibrato.connect(vibratoGain).connect(osc.frequency);
+
+        osc.connect(gain).connect(this.master);
+        osc.start(time);
+        vibrato.start(time);
+        osc.stop(time + 0.35);
+        vibrato.stop(time + 0.35);
+    }
+}
+
+const audioSystem = (() => {
+    let ctx=null, fx=null, music=null;
+    function ensure(){
+        if(!AudioContextClass) return null;
+        if(!ctx){
+            ctx = new AudioContextClass();
+        }
+        if(ctx.state === 'suspended'){
+            ctx.resume();
+        }
+        if(!fx) fx = new RetroFX(ctx);
+        if(!music) music = new RetroMusicEngine(ctx);
+        return ctx;
+    }
+    return {
+        playShot(type='bullet', level=1){ if(ensure()) fx.playShot(type, level); },
+        playEnemyShot(){ if(ensure()) fx.playEnemyShot(); },
+        playExplosion(){ if(ensure()) fx.playExplosion(); },
+        playShieldHit(){ if(ensure()) fx.playShieldHit(); },
+        playPlayerHit(){ if(ensure()) fx.playPlayerDamage(); },
+        playBlackHole(){ if(ensure()) fx.playBlackHole(); },
+        playLevelUp(){ if(ensure()) fx.playLevelUp(); },
+        startUfoHum(){ return ensure() ? fx.startUfoHum() : null; },
+        playUfoExplosion(){ if(ensure()) fx.playUfoExplosion(); },
+        startMusic(){ if(ensure()) music.start(); },
+        stopMusic(){ if(music) music.stop(); }
+    };
+})();
+
+const sounds = {
+    hit: ()=>audioSystem.playShieldHit(),
+    explosion: ()=>audioSystem.playExplosion(),
+    playerhit: ()=>audioSystem.playPlayerHit()
+};
+
+// Unified play helper keeps compatibility with legacy sound calls
+function play(sound){
+    if(typeof sound === 'function'){
+        sound();
+        return;
+    }
+    if(sound && typeof sound.play === 'function'){
+        try{
+            sound.currentTime = 0;
+            sound.play();
+        }catch(e){}
+    }
+}
+
+// ============================================
+// GAME STATE VARIABLES
+// All runtime game data and entity arrays
+// ============================================
+
+// Input tracking - stores which keys are currently pressed
+const keys={a:{pressed:false},d:{pressed:false},space:{pressed:false}};
+
+// Game entity arrays - hold all active objects in the game
+let player;                    // Player ship instance
+let projectiles=[];            // Player bullets
+let grids=[];                  // Invader formations
+let ufos=[];                   // Bonus UFO ships
+let invaderProjectiles=[];     // Enemy bullets
+let particles=[];              // Visual effects particles
+let stars=[];                  // Background starfield
+let drops=[];                  // Power-up items
+let barriers=[];               // Destructible barriers
+let barrierCountConfig=4;      // Default: 4 barriers (configurable via slider)
+let meteors=[];                // Falling meteor hazards
+let blackHoles=[];             // Black hole gravity traps
+
+function stopAllUfoAudio(){
+    ufos.forEach(u=>{
+        if(u && typeof u.cleanupAudio === 'function'){
+            u.cleanupAudio();
+        }
+    });
+}
+
+// Score and progress tracking
+let score=0;
+let wave=1;
+let ufosKilled=0;              // Track UFO kills for bonus life system
+
+// Game flow control
+let gameActive=false;          // Is game currently running?
+let gamePaused=false;          // Is game paused?
+let lastTime=0;                // Last frame timestamp for delta time
+
+// Spawn timers
+let ufoSpawnTimer=0;           // Countdown to next UFO appearance
+let lastDropTime=0;            // Throttle drops to prevent spam
+
+// Difficulty settings - updated each wave
+let difficulty;
+
+// Screen shake effect variables
+let shakeX=0, shakeY=0, shakeTimer=0;
+
+// Boss battle
+let boss=null;                 // Current boss instance if active
+
+// Game modes: classic, time_attack, score_attack, survival
+let gameMode='classic';
+
+// Time tracking for different modes
+let gameTime=0;                // Time remaining (time_attack) or elapsed (survival)
+let survivalTimer=0;
+
+// Combo system for consecutive kills
+let comboCount=0;              // Current combo multiplier
+let comboTimer=0;              // Time until combo resets
+const COMBO_WINDOW=2500;       // Milliseconds to keep combo alive between kills
+
+// ============================================
+// PARTICLE POOL SYSTEM
+// Pre-allocated particles for performance optimization
+// ============================================
+const PARTICLE_POOL_SIZE=200;  // Maximum active particles
+const particlePool=[];         // Reusable particle instances
+
+// ============================================
+// STARFIELD BACKGROUND
+// Three-layer parallax star system for depth
+// ============================================
+stars = [];
+
+// Layer 1: Distant stars - slow moving, dim, small
+for(let i=0;i<100;i++){
+    stars.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,s:0.2 + Math.random()*0.3, alpha: 0.4, size:1});
+}
+
+// Layer 2: Mid-distance stars - medium speed and brightness
+for(let i=0;i<60;i++){
+    stars.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,s:0.8 + Math.random()*0.5, alpha: 0.7, size:1.5});
+}
+
+// Layer 3: Close stars - fast moving, bright, larger
+for(let i=0;i<30;i++){
+    stars.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,s:2 + Math.random()*1.5, alpha: 1, size:2});
+}
+
+// ============================================
+// GAME CONSTANTS & CONFIGURATION
+// Color schemes, power levels, weapon patterns
+// ============================================
+
+// Color palette for invaders - cycles through waves
+const INVADER_COLORS=['#ff4d6d','#ffb347','#6cfb72','#68d8ff','#c08bff','#ffec5c','#ff8fab','#55f0d5'];
+
+// Power-up and upgrade limits
+const MAX_POWER_LEVEL=4;       // Maximum weapon upgrade level
+const SHIELD_MAX_HITS=3;       // Shield can absorb 3 hits before breaking
+
+// Get invader color for a specific wave number
+function getWaveColor(index=wave){
+    return INVADER_COLORS[(Math.max(0,index-1))%INVADER_COLORS.length];
+}
+
+// Calculate weapon power level based on current score
+// Levels up every 10,000 points
+function getPowerLevelForScore(points){
+    return Math.min(MAX_POWER_LEVEL,1+Math.floor(points/10000));
+}
+
+// Weapon damage scaling
+const PROJECTILE_BASE_DAMAGE=18;    // Level 1 damage
+const PROJECTILE_DAMAGE_STEP=6;     // Damage increase per level
+
+// Weapon firing patterns for each power level
+// offset: horizontal offset from ship center
+// xVel: horizontal velocity
+// yVel: vertical velocity (negative = upward)
+const SHOT_PATTERNS={
+    1:[{offset:0,xVel:0,yVel:-12}],  // Level 1: Single shot
+    2:[{offset:-8,xVel:-0.5,yVel:-12},{offset:8,xVel:0.5,yVel:-12}],  // Level 2: Double shot
+    3:[  // Level 3: Triple shot spread
+        {offset:0,xVel:0,yVel:-12.5},
+        {offset:-12,xVel:-0.8,yVel:-11.2},
+        {offset:12,xVel:0.8,yVel:-11.2}
+    ],
+    4:[  // Level 4: Five-way spread
+        {offset:0,xVel:0,yVel:-12.8},
+        {offset:-14,xVel:-1,yVel:-11.5},
+        {offset:14,xVel:1,yVel:-11.5},
+        {offset:-32,xVel:-1.2,yVel:-10.5},
+        {offset:32,xVel:1.2,yVel:-10.5}
+    ]
+};
+
+// Get current projectile damage based on player power level
+function getProjectileDamage(){
+    const level=player?.powerLevel||1;
+    return PROJECTILE_BASE_DAMAGE+(level-1)*PROJECTILE_DAMAGE_STEP;
+}
+
+// ============================================
+// DIFFICULTY SCALING SYSTEM
+// Dynamically adjusts game difficulty based on wave number
+// ============================================
+
+// Calculate difficulty parameters for current wave
+function getDifficultySnapshot(){
+    const progression=Math.max(0,wave-1);
+    const capped=Math.min(progression,20);  // Cap linear scaling at wave 20
+    
+    // Every 10 waves, difficulty loops and gets harder
+    const loop=Math.floor((wave-1)/10);
+    const loopFactor=loop*0.5;  // Increase speed per loop
+    
+    return {
+        gridSpeed:(1.5+capped*0.18)+loopFactor,  // Invader horizontal movement speed
+        fireChance:0.00045+capped*0.00012+(loop*0.0001),  // Probability of invaders shooting
+        ufoInterval:Math.max(3000,12000-capped*450-(loop*500))  // Time between UFO spawns (ms)
+    };
+}
+
+// Update difficulty settings to match current wave
+function refreshDifficulty(){
+    difficulty=getDifficultySnapshot();
+}
+refreshDifficulty();  // Initialize difficulty on game load
+
+// ============================================
+// GAME ENTITY CLASSES
+// Define behavior and rendering for all game objects
+// ============================================
+
+// ============================================
+// PLAYER CLASS
+// The player's ship - movement, rendering, stats
+// ============================================
+class Player{
+    constructor(){
+        // Ship dimensions
+        this.width=56;
+        this.height=38;
+        
+        // Starting position (centered near bottom)
+        this.position={x:canvas.width/2-28,y:canvas.height-80};
+        
+        // Movement speed in pixels per frame
+        this.speed=6;
+        
+        // Player stats
+        this.lives=3;              // Number of lives remaining
+        this.ammo=30;              // Ammunition count
+        this.powerLevel=1;         // Weapon upgrade level (1-4)
+        this.weaponType='bullet';  // Current weapon: bullet, laser, or missile
+        this.fullAuto = false;     // Power-up: enables rapid fire for current weapon
+        
+        // Shield system
+        this.shieldHP=0;           // Shield hit points (0 = no shield)
+        this.shieldPulse=0;        // Visual pulse effect counter when shield is hit
+        this.wasSpacePressed = false; // Latch for semi-auto fire
+        this.autoFireTimer = 0;    // Accumulator for auto-fire rate
+    }
+    
+    // Render the player ship with detailed graphics
+    draw(){
+        const {x,y}=this.position;
+        const fuselageWidth=22;
+        const fuselageOffset=(this.width-fuselageWidth)/2;
+        
+        ctx.save();
+        ctx.translate(x,y);  // Move origin to ship position
+        
+        // Glow effect - cyan normally, white if full auto
+        ctx.shadowColor=this.fullAuto ? '#ffffff' : '#7af9ff';
+        ctx.shadowBlur=this.fullAuto ? 15 : 3;
+
+        // Cross wings extending from ship sides
+        ctx.fillStyle='#c6c9d0';
+        ctx.fillRect(-14,6,26,5);              // upper-left wing
+        ctx.fillRect(-14,this.height-13,26,5); // lower-left wing
+        ctx.fillRect(this.width-12,6,26,5);    // upper-right wing
+        ctx.fillRect(this.width-12,this.height-13,26,5); // lower-right wing
+
+        // Wing-mounted weapon cannons
+        ctx.fillStyle='#7c7f86';
+        ctx.fillRect(-18,5,4,7);                // top-left cannon
+        ctx.fillRect(-18,this.height-12,4,7);   // bottom-left cannon
+        ctx.fillRect(this.width+10,5,4,7);      // top-right cannon
+        ctx.fillRect(this.width+10,this.height-12,4,7); // bottom-right cannon
+
+        // Engine pods with red glow
+        const engineColor='#f04d3a';
+        ctx.fillStyle=engineColor;
+        [-8,this.width+4].forEach((px,idx)=>{
+            ctx.beginPath();
+            ctx.ellipse(px,11,4,6,0,0,Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(px,this.height-11,4,6,0,0,Math.PI*2);
+            ctx.fill();
+        });
+
+        // Main fuselage with metallic gradient
+        const hullGrad=ctx.createLinearGradient(0,0,0,this.height);
+        hullGrad.addColorStop(0,'#f5f5f5');    // Light top
+        hullGrad.addColorStop(0.45,'#cfd2d8');  // Mid gray
+        hullGrad.addColorStop(1,'#7a818a');     // Dark bottom
+        ctx.fillStyle=hullGrad;
+        ctx.fillRect(fuselageOffset,4,fuselageWidth,this.height-8);
+
+        // Pointed nose cone
+        ctx.beginPath();
+        ctx.moveTo(this.width/2,0);      // Tip
+        ctx.lineTo(this.width/2+6,10);   // Right edge
+        ctx.lineTo(this.width/2-6,10);   // Left edge
+        ctx.closePath();
+        ctx.fillStyle='#cfd2d8';
+        ctx.fill();
+
+        // Red squadron identification stripes
+        ctx.fillStyle='#ff724f';
+        ctx.fillRect(fuselageOffset+2,10,fuselageWidth-4,4);
+        ctx.fillRect(fuselageOffset+2,this.height-16,fuselageWidth-4,3);
+
+        // Glass cockpit bubble with shiny gradient
+        const domeGrad=ctx.createRadialGradient(this.width/2-2,8,2,this.width/2,20,14);
+        domeGrad.addColorStop(0,'#c8f1ff');         // Bright center highlight
+        domeGrad.addColorStop(0.6,'#6fb8ff');       // Blue glass
+        domeGrad.addColorStop(1,'rgba(0,0,0,0.35)'); // Dark edge
+        ctx.fillStyle=domeGrad;
+        ctx.beginPath();
+        ctx.ellipse(this.width/2,12,9,13,0,0,Math.PI*2);
+        ctx.fill();
+
+        // Engine thruster glow effect
+        const thrusterGrad=ctx.createRadialGradient(this.width/2,this.height-2,2,this.width/2,this.height+12,18);
+        thrusterGrad.addColorStop(0,'rgba(255,255,255,0.9)');  // White hot center
+        thrusterGrad.addColorStop(0.35,'rgba(255,190,90,0.8)'); // Orange flame
+        thrusterGrad.addColorStop(1,'rgba(255,120,0,0)');       // Fade to transparent
+        ctx.fillStyle=thrusterGrad;
+        ctx.beginPath();
+        ctx.ellipse(this.width/2,this.height-2,6,11,0,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.restore();
+        ctx.shadowBlur=0;
+
+        // Shield arc rendered in front of ship
+        if(this.shieldHP>0){
+            const strength=this.shieldHP/SHIELD_MAX_HITS;  // 0-1 shield strength
+            const offsetY=-12;
+            
+            // Gradient shield with opacity based on strength
+            const gradient=ctx.createLinearGradient(x,this.position.y+offsetY,x+this.width,this.position.y+offsetY-40);
+            gradient.addColorStop(0,'rgba(80,200,255,0)');  // Transparent edges
+            gradient.addColorStop(0.5,`rgba(120,220,255,${0.35+0.4*strength})`); // Bright center
+            gradient.addColorStop(1,'rgba(80,200,255,0)');  // Transparent edges
+            
+            ctx.strokeStyle=gradient;
+            ctx.lineWidth=3+(this.shieldPulse>0?1:0);  // Thicker when hit
+            ctx.beginPath();
+            ctx.arc(x+this.width/2,this.position.y-15,45,Math.PI*0.75,Math.PI*0.25,false);
+            ctx.stroke();
+            
+            if(this.shieldPulse>0) this.shieldPulse--;  // Countdown pulse effect
+        }
+
+        // Muzzle flash visual when firing
+        if(keys.space.pressed && player.ammo>0 && Math.random()<0.5){
+            ctx.fillStyle='#fff6a1';
+            ctx.fillRect(x+this.width/2-2,y-8,4,14);
+        }
+    }
+    
+    // Update player position based on input and render
+    update(delta){
+        // Keyboard Movement
+        if(keys.a.pressed && this.position.x>0) this.position.x-=this.speed;
+        if(keys.d.pressed && this.position.x+this.width<canvas.width) this.position.x+=this.speed;
+        
+        // Ensure bounds (Mouse might push it out slightly due to lag, or keyboard)
+        if(this.position.x < 0) this.position.x = 0;
+        if(this.position.x + this.width > canvas.width) this.position.x = canvas.width - this.width;
+
+        // Handle Full Auto Fire (Hold Click/Space)
+        if(this.fullAuto && keys.space.pressed){
+             this.autoFireTimer += delta;
+             if(this.autoFireTimer >= 100) { // Fire every 100ms (~10 shots/sec)
+                 shoot();
+                 this.autoFireTimer = 0;
+             }
+        } else if(!this.fullAuto && keys.space.pressed && !this.wasSpacePressed) {
+             // Standard semi-auto: fire once on press
+             shoot();
+             this.wasSpacePressed = true;
+        } else {
+             this.autoFireTimer = 100; // Reset timer so next press fires immediately
+        }
+        
+        // Reset semi-auto latch when key released
+        if(!keys.space.pressed) {
+            this.wasSpacePressed = false;
+        }
+
+        this.draw();
+    }
+}
+
+// ============================================
+// BARRIER BLOCK CLASS
+// Destructible cover blocks that protect player
+// ============================================
+class BarrierBlock {
+    constructor({position}) {
+        this.position = position;
+        this.width = 12;
+        this.height = 12;
+        this.health = 40;  // Takes 2-3 hits from standard bullets (18-24 damage each)
+    }
+    
+    draw() {
+        if (this.health <= 0) return;  // Don't draw destroyed blocks
+        
+        // Fade out as health decreases
+        const alpha = Math.max(0.2, this.health / 40);
+        
+        // Green block with border
+        ctx.fillStyle = `rgba(50, 255, 50, ${alpha})`;
+        ctx.fillRect(this.position.x, this.position.y, this.width, this.height);
+        ctx.strokeStyle = `rgba(0, 255, 0, ${alpha})`;
+        ctx.strokeRect(this.position.x, this.position.y, this.width, this.height);
+    }
+}
+
+// ============================================
+// METEOR CLASS
+// Falling space debris that damages player and barriers
+// ============================================
+class Meteor {
+    constructor(){
+        // Spawn at random X position above screen
+        this.position = {x: Math.random()*canvas.width, y: -50};
+        
+        // Diagonal falling motion with some horizontal drift
+        this.velocity = {x: (Math.random()-0.5)*3, y: 3+Math.random()*4};
+        
+        // Random size and rotation
+        this.size = 15 + Math.random()*15;      // Radius in pixels
+        this.angle = Math.random()*Math.PI*2;   // Initial rotation
+        this.spin = (Math.random()-0.5)*0.2;    // Rotation speed
+        
+        this.damage = 30;  // Damage dealt on impact
+    }
+    
+    update(){
+        // Move meteor
+        this.position.x += this.velocity.x;
+        this.position.y += this.velocity.y;
+        this.angle += this.spin;  // Rotate as it falls
+        this.draw();
+    }
+    
+    draw(){
+        ctx.save();
+        ctx.translate(this.position.x, this.position.y);
+        ctx.rotate(this.angle);
+        
+        // Brown rock with orange glow
+        ctx.fillStyle = '#a0522d'; 
+        ctx.shadowColor = '#ff4500';
+        ctx.shadowBlur = 8;
+        
+        // Draw irregular polygon to simulate rocky shape
+        ctx.beginPath();
+        const sides = 7;
+        for(let i=0; i<sides; i++){
+            const ang = (i/sides)*Math.PI*2;
+            const r = this.size * (0.7 + Math.cos(i*3)*0.3);  // Vary radius for jagged edges
+            ctx.lineTo(Math.cos(ang)*r, Math.sin(ang)*r);
+        }
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// ============================================
+// BLACK HOLE CLASS
+// Gravity trap that pulls player and projectiles
+// Boss special attack
+// ============================================
+class BlackHole {
+    constructor({position, velocity}){
+        this.position = position;
+        this.velocity = velocity;
+        
+        // Black hole dimensions and physics
+        this.radius = 16;           // Overall size
+        this.eventHorizon = 8;      // Point of no return (instant death)
+        this.accretionDisk = 24;    // Visible swirling matter disk
+        this.pullRange = 160;       // Gravity effect radius (approx 3 ship widths)
+        
+        this.angle = 0;             // Rotation angle for spinning disk
+    }
+    
+    update(){
+        // Move black hole
+        this.position.x += this.velocity.x;
+        this.position.y += this.velocity.y;
+        this.angle += 0.1;  // Rotate accretion disk
+        this.draw();
+    }
+    
+    draw(){
+        ctx.save();
+        ctx.translate(this.position.x, this.position.y);
+        
+        // Outer gravity distortion ring (visual indicator of pull range)
+        ctx.strokeStyle = 'rgba(100, 0, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.pullRange, 0, Math.PI*2);
+        ctx.stroke();
+
+        // Accretion disk - swirling matter around black hole
+        ctx.rotate(this.angle);  // Rotate for spinning effect
+        
+        const grad = ctx.createRadialGradient(0,0,this.eventHorizon, 0,0,this.accretionDisk);
+        grad.addColorStop(0, '#000');      // Black center
+        grad.addColorStop(0.2, '#4b0082'); // Indigo
+        grad.addColorStop(0.6, '#9932cc'); // DarkOrchid
+        grad.addColorStop(1, 'transparent'); // Fade to transparent
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        
+        // Draw irregular disk shape for dynamic appearance
+        for(let i=0; i<20; i++){
+            const ang = (i/20)*Math.PI*2;
+            const r = this.accretionDisk + Math.sin(i*3 + this.angle)*4;  // Wavy edge
+            ctx.lineTo(Math.cos(ang)*r, Math.sin(ang)*r);
+        }
+        ctx.fill();
+
+        // Event horizon - pure black center with white glow
+        ctx.fillStyle = '#000';
+        ctx.shadowColor = '#fff';
+        ctx.shadowBlur = 5;
+        ctx.beginPath();
+        ctx.arc(0,0,this.eventHorizon, 0, Math.PI*2);
+        ctx.fill();
+        
+        ctx.restore();
+    }
+}
+
+// ============================================
+// PROJECTILE CLASS
+// Bullets fired by player and enemies
+// ============================================
+class Projectile{
+    constructor({position,velocity,color='white',radius=4,isNuke=false,type='bullet',wiggleAmp=0,durability=1,isBossShot=false}){
+        this.position={...position};  // Clone position object
+        this.velocity=velocity;
+        this.radius=radius;
+        this.color=color;
+        this.isNuke=isNuke;           // Unused legacy property
+        this.type=type;               // bullet, laser, missile, squiggly, plunger
+        this.wiggleAmp=wiggleAmp;
+        this.baseX=this.position.x;
+        this.timer=0;
+        this.durability=durability;
+        this.isBossShot=isBossShot;
+    }
+    
+    draw(){
+        ctx.save();
+        
+        // Laser type renders as a beam
+        if(this.type === 'laser'){
+             ctx.shadowBlur=10; 
+             ctx.shadowColor=this.color; 
+             ctx.fillStyle=this.color;
+             ctx.fillRect(this.position.x-2, this.position.y-10, 4, 20);  // Vertical beam
+        } else if(this.type==='squiggly'){ // Wiggly enemy shot (Crab)
+             ctx.strokeStyle=this.color;
+             ctx.lineWidth=3;
+             ctx.beginPath();
+             ctx.moveTo(this.position.x, this.position.y-5);
+             ctx.lineTo(this.position.x-4, this.position.y);
+             ctx.lineTo(this.position.x+4, this.position.y+5);
+             ctx.lineTo(this.position.x, this.position.y+10);
+             ctx.stroke();
+        } else if(this.type==='plunger'){ // Fast shot (Squid)
+             ctx.fillStyle=this.color;
+             ctx.beginPath();
+             ctx.moveTo(this.position.x, this.position.y+8);
+             ctx.lineTo(this.position.x-3, this.position.y-4);
+             ctx.lineTo(this.position.x+3, this.position.y-4);
+             ctx.fill();
+        } else {
+            // Standard bullets and missiles render as glowing circles
+            ctx.shadowBlur=this.isNuke?20:15;
+            ctx.shadowColor=this.color;
+            ctx.fillStyle=this.color;
+            ctx.beginPath();
+            ctx.arc(this.position.x,this.position.y,this.radius,0,Math.PI*2);
+            ctx.fill();
+        }
+        
+        ctx.shadowBlur=0;
+        ctx.restore();
+    }
+    
+    // Move projectile and render it
+    update(){
+        this.timer++;
+        if(this.wiggleAmp > 0){
+            this.position.x = this.baseX + Math.sin(this.timer*0.2)*this.wiggleAmp;
+            this.baseX += this.velocity.x;
+        } else {
+            this.position.x+=this.velocity.x;
+        }
+        
+        this.position.y+=this.velocity.y;
+        this.draw();
+    }
+}
+
+// ============================================
+// INVADER CLASS
+// Enemy alien ships that move in formation
+// ============================================
+class Invader{
+    constructor({position,color,type='large'}){
+        this.position={...position};
+        this.width=32;
+        this.height=26;
+        this.color=color||'#ff4d6d';  // Main ship color (varies by wave)
+        this.type=type; // 'small' (Squid), 'medium' (Crab), 'large' (Octopus)
+        
+        // Points per type
+        if(this.type==='small') this.points=30;
+        else if(this.type==='medium') this.points=20;
+        else this.points=10;
+
+        this.eyeColor='#020202';       // Dark eyes
+        this.panelColor='#0c0c0c';     // Dark panel accents
+    }
+    
+    draw(frame){
+        // Animated bobbing and arm swing using sine waves
+        const bob = Math.sin(frame/120)*2;       // Gentle horizontal sway
+        const armSwing = Math.sin(frame/80)*4;   // Alternating arm movement
+        
+        ctx.save();
+        ctx.translate(bob,0);  // Apply bobbing motion
+        ctx.shadowColor=this.color;
+        ctx.shadowBlur=3;
+        ctx.fillStyle=this.color;
+
+        if(this.type==='small'){ // SQUID (Top Row)
+             // Pointy head
+             ctx.beginPath();
+             ctx.moveTo(this.position.x+this.width/2, this.position.y);
+             ctx.lineTo(this.position.x+this.width, this.position.y+10);
+             ctx.lineTo(this.position.x+this.width-4, this.position.y+20);
+             ctx.lineTo(this.position.x+4, this.position.y+20);
+             ctx.lineTo(this.position.x, this.position.y+10);
+             ctx.fill();
+             // Tentacles
+             ctx.fillRect(this.position.x+6, this.position.y+20, 4, 6+Math.sin(frame/50)*3);
+             ctx.fillRect(this.position.x+this.width-10, this.position.y+20, 4, 6+Math.cos(frame/50)*3);
+             // Eyes
+             ctx.fillStyle=this.eyeColor;
+             ctx.fillRect(this.position.x+10,this.position.y+8,4,4);
+             ctx.fillRect(this.position.x+this.width-14,this.position.y+8,4,4);
+
+        } else if(this.type==='medium'){ // CRAB (Middle Rows)
+             // Wide body
+             ctx.fillRect(this.position.x+2,this.position.y+6,this.width-4,14);
+             // Upper feelers
+             ctx.fillRect(this.position.x,this.position.y,6,6);
+             ctx.fillRect(this.position.x+this.width-6,this.position.y,6,6);
+             // Lower legs (animated)
+             ctx.fillRect(this.position.x,this.position.y+20,6,6+armSwing);
+             ctx.fillRect(this.position.x+this.width-6,this.position.y+20,6,6-armSwing);
+             // Eyes
+             ctx.fillStyle=this.eyeColor;
+             ctx.fillRect(this.position.x+8,this.position.y+10,4,4);
+             ctx.fillRect(this.position.x+this.width-12,this.position.y+10,4,4);
+
+        } else { // OCTOPUS (Bottom Rows - Default visual style)
+            // Upper hull
+            ctx.fillRect(this.position.x+4,this.position.y,this.width-8,10);
+            // Lower hull
+            ctx.fillRect(this.position.x,this.position.y+10,this.width,12);
+            // Articulated arms
+            ctx.fillRect(this.position.x-10,this.position.y+8+armSwing,6,16);
+            ctx.fillRect(this.position.x+this.width+4,this.position.y+8-armSwing,6,16);
+            // Wing tips
+            ctx.fillRect(this.position.x-4,this.position.y+12,8,6);
+            ctx.fillRect(this.position.x+this.width-4,this.position.y+12,8,6);
+            // Cockpit glow
+            ctx.fillStyle='#fff6d5';
+            ctx.fillRect(this.position.x+this.width/2-4,this.position.y+3,8,6);
+            // Eyes
+            ctx.fillStyle=this.eyeColor;
+            ctx.fillRect(this.position.x+10,this.position.y+6,4,4);
+            ctx.fillRect(this.position.x+this.width-14,this.position.y+6,4,4);
+        }
+        
+        ctx.restore();
+        ctx.shadowBlur=0;
+    }
+    
+    // Move invader and render
+    update({velocity,frame}){
+        this.position.x+=velocity.x;
+        this.position.y+=velocity.y;
+        this.draw(frame);
+    }
+    
+    // Fire a projectile downward
+    shoot(){
+        let type = 'straight'; // Default
+        let color = '#ff5c5c';
+        let speed = 3.2;
+        let wiggle = 0;
+
+        if(this.type==='small'){
+            type = 'plunger'; // Fast rolling shot (Squid)
+            speed = 5.5;
+            color = '#ff0000'; // Red
+        } else if(this.type==='medium'){
+            type = 'squiggly'; // Wiggly shot (Crab)
+            speed = 3.5;
+            color = '#ff0000'; // Red
+            wiggle = 3;
+        } else if(this.type==='asteroid'){
+            // Asteroids don't shoot, but if logic triggers, it's a rock?
+            // Asteroids in `meteors` array don't use this class. 
+            // Wait, Meteors are separate class.
+        }
+        
+        invaderProjectiles.push(new Projectile({
+            position:{x:this.position.x+this.width/2,y:this.position.y+this.height},
+            velocity:{x:0,y:speed},  // Straight down
+            color: color,
+            type: type,
+            wiggleAmp: wiggle,
+            durability: 1
+        }));
+    }
+}
+
+// ============================================
+// UFO CLASS
+// Bonus enemy ship that flies across the top
+// Gives ammo and extra lives when destroyed
+// ============================================
+class UFO{
+    constructor(dir=0){
+        // Determine spawn side: dir=1 (left), dir=-1 (right), dir=0 (random)
+        const fromLeft= dir!==0 ? (dir===1) : (Math.random()>0.5);
+        
+        this.width = 80;
+        this.height = 28;
+        this.baseY=50+Math.random()*50;  // Random vertical position in upper area
+        
+        // Start position off-screen on left or right
+        this.position={
+            x:fromLeft?-this.width-40:canvas.width+this.width+40,
+            y:this.baseY
+        };
+        
+        // Horizontal velocity (negative = leftward, positive = rightward)
+        this.velocity={x:fromLeft?3.4:-3.4,y:0};
+        
+        this.wobblePhase=Math.random()*Math.PI*2;  // Random starting phase for bobbing animation
+        this.stopHumHandle = null;
+        if(audioSystem && typeof audioSystem.startUfoHum === 'function'){
+            this.stopHumHandle = audioSystem.startUfoHum();
+        }
+    }
+    
+    draw(frameTime=0){
+        // Vertical wobble animation
+        const wobble=Math.sin(frameTime/250+this.wobblePhase)*4;
+        const centerX=this.position.x+this.width/2;
+        const centerY=this.position.y+this.height/2;
+        
+        ctx.save();
+        ctx.translate(0,wobble);  // Apply wobble offset
+        ctx.shadowColor='#b300ff';  // Purple glow
+        ctx.shadowBlur=6;
+
+        // Glowing undercarriage engine
+        const engineGrad=ctx.createLinearGradient(centerX,centerY+6,centerX,centerY+16);
+        engineGrad.addColorStop(0,'rgba(255,120,255,0.85)');  // Bright pink
+        engineGrad.addColorStop(1,'rgba(255,120,255,0)');     // Fade out
+        ctx.fillStyle=engineGrad;
+        ctx.beginPath();
+        ctx.ellipse(centerX,centerY+10,this.width/2.6,this.height/2.2,0,0,Math.PI*2);
+        ctx.fill();
+
+        // Main saucer hull with 3D gradient shading
+        const hullGrad=ctx.createLinearGradient(centerX,this.position.y,centerX,this.position.y+this.height);
+        hullGrad.addColorStop(0,'#ffd2ff');   // Light pink top
+        hullGrad.addColorStop(0.4,'#c154ff'); // Purple middle
+        hullGrad.addColorStop(1,'#320040');   // Dark bottom
+        ctx.fillStyle=hullGrad;
+        ctx.beginPath();
+        ctx.ellipse(centerX,centerY,this.width/2,this.height/2,0,0,Math.PI*2);
+        ctx.fill();
+
+        // Metallic rim detail
+        ctx.strokeStyle='rgba(255,255,255,0.18)';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.ellipse(centerX,centerY,this.width/2-4,this.height/2-4,0,0,Math.PI*2);
+        ctx.stroke();
+
+        // Top plate / command module
+        const plateGrad=ctx.createLinearGradient(centerX,this.position.y-6,centerX,this.position.y+10);
+        plateGrad.addColorStop(0,'#ffe8ff');  // Light top
+        plateGrad.addColorStop(1,'#7b2cbf');  // Purple bottom
+        ctx.fillStyle=plateGrad;
+        ctx.beginPath();
+        ctx.ellipse(centerX,this.position.y+3,this.width/3.2,this.height/2.3,0,0,Math.PI*2);
+        ctx.fill();
+
+        // Glass observation dome
+        const domeGrad=ctx.createRadialGradient(centerX-6,this.position.y-4,3,centerX,this.position.y+2,22);
+        domeGrad.addColorStop(0,'#c8f7ff');       // Bright center
+        domeGrad.addColorStop(0.5,'#6ed4ff');     // Blue glass
+        domeGrad.addColorStop(1,'rgba(0,0,0,0.1)'); // Dark edge
+        ctx.fillStyle=domeGrad;
+        ctx.beginPath();
+        ctx.ellipse(centerX,this.position.y-2,this.width/4.5,this.height/1.6,0,0,Math.PI*2);
+        ctx.fill();
+
+        // Dome highlight (specular reflection)
+        ctx.fillStyle='rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.ellipse(centerX-10,this.position.y-6,this.width/10,this.height/4,Math.PI/8,0,Math.PI*2);
+        ctx.fill();
+
+        // Five engine lights on bottom
+        ctx.fillStyle='#fffb8c';  // Yellowish glow
+        for(let i=-2;i<=2;i++){
+            ctx.beginPath();
+            ctx.arc(centerX+i*10,this.position.y+this.height-4,3,0,Math.PI*2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+        ctx.shadowBlur=0;
+    }
+    
+    // Move UFO horizontally and render
+    update(frameTime=performance.now()){
+        this.position.x+=this.velocity.x;
+        this.draw(frameTime);
+    }
+
+    cleanupAudio(){
+        if(this.stopHumHandle){
+            this.stopHumHandle();
+            this.stopHumHandle=null;
+        }
+    }
+}
+
+// ============================================
+// PARTICLE CLASS
+// Visual effect particles for explosions and impacts
+// Uses object pooling for performance
+// ============================================
+class Particle{
+    constructor({position,velocity,radius,color,fades}){
+        this.position={...position};
+        this.velocity=velocity;
+        this.radius=radius;
+        this.color=color;
+        this.opacity=1;           // Starts fully opaque
+        this.fades=fades;         // Whether particle fades out over time
+        this.dead=false;          // Marked for recycling when true
+    }
+    
+    draw(){
+        ctx.save();
+        ctx.globalAlpha=Math.max(0,this.opacity);  // Apply opacity
+        ctx.fillStyle=this.color;
+        ctx.beginPath();
+        ctx.arc(this.position.x,this.position.y,this.radius,0,Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+    }
+    
+    update(){
+        // Move particle
+        this.position.x+=this.velocity.x;
+        this.position.y+=this.velocity.y;
+        
+        // Fade out if enabled
+        if(this.fades) this.opacity-=0.03;
+        
+        // Mark as dead if faded out or off-screen
+        if(this.opacity<=0 || this.position.y>canvas.height || this.position.x<0 || this.position.x>canvas.width) {
+            this.dead=true;
+        }
+        
+        this.draw();
+    }
+    
+    // Reset particle for reuse (object pooling)
+    reset({position,velocity,radius,color,fades}){
+        this.position={...position};
+        this.velocity=velocity;
+        this.radius=radius;
+        this.color=color;
+        this.opacity=1;
+        this.fades=fades;
+        this.dead=false;
+    }
+}
+
+// ============================================
+// PARTICLE SPAWNING FUNCTION
+// Object pooling system - reuses particles for performance
+// ============================================
+function spawnParticle(config){
+    let p=null;
+    
+    // Search for dead particle to reuse (manual loop faster than .find())
+    for(let i=0; i<particlePool.length; i++){
+        if(particlePool[i].dead){
+            p = particlePool[i];
+            break;
+        }
+    }
+    
+    // Found a dead particle to reuse
+    if(p){
+        p.reset(config);
+        return p;
+    }
+    
+    // Pool not full - create new particle
+    if(particlePool.length < PARTICLE_POOL_SIZE){
+        const newP=new Particle(config);
+        particlePool.push(newP);
+        return newP;
+    }
+    
+    // Pool full - forcibly recycle oldest particle
+    const oldest = particlePool[0];
+    oldest.reset(config);
+    return oldest;
+}
+
+// ============================================
+// DROP CLASS
+// Power-up items that fall from destroyed enemies
+// Types: life, shield, laser, missile, ammo
+// ============================================
+class Drop{
+    constructor({position,type}){
+        this.position={...position};
+        this.velocity={x:0,y:2.5};  // Falls downward
+        this.type=type;             // Type of power-up
+        this.width=20;
+        this.height=20;
+        this.angle=0;               // Rotation angle for spinning animation
+    }
+    
+    draw(){
+        ctx.save();
+        ctx.translate(this.position.x+10,this.position.y+10);  // Center rotation
+        ctx.rotate(this.angle);
+        this.angle+=0.05;  // Continuous rotation
+        ctx.shadowBlur=10;
+        
+        // Draw different icon for each power-up type
+        if(this.type==='life'){
+            // Purple health cross (1-UP)
+            ctx.shadowColor='#b300ff';
+            ctx.fillStyle='#b300ff';
+            ctx.fillRect(-6,-6,12,4);   // Horizontal bar
+            ctx.fillRect(-2,-10,4,12);  // Vertical bar
+            
+        }else if(this.type==='shield'){
+            // Cyan shield circle
+            ctx.shadowColor='#0ff';
+            ctx.strokeStyle='#0ff';
+            ctx.lineWidth=3;
+            ctx.beginPath();
+            ctx.arc(0,0,8,0,Math.PI*2);
+            ctx.stroke();
+            
+        }else if(this.type==='laser'){
+            // Blue laser beam
+            ctx.shadowColor='#00f';
+            ctx.fillStyle='#00f';
+            ctx.fillRect(-2,-10,4,20);
+            
+        }else if(this.type==='missile'){
+            // Orange missile triangle
+            ctx.shadowColor='#ffa500';
+            ctx.fillStyle='#ffa500';
+            ctx.beginPath();
+            ctx.moveTo(0,-10);      // Tip
+            ctx.lineTo(5,5);        // Bottom right
+            ctx.lineTo(-5,5);       // Bottom left
+            ctx.fill();
+            
+        }else if(this.type==='fullauto'){
+            // White diamond - Full Auto
+            ctx.shadowColor='#fff';
+            ctx.fillStyle='#fff';
+            ctx.beginPath();
+            ctx.moveTo(0,-10);
+            ctx.lineTo(8,0);
+            ctx.lineTo(0,10);
+            ctx.lineTo(-8,0);
+            ctx.fill();
+
+        }else{
+            // Green ammo box (default)
+            ctx.shadowColor='#0f0';
+            ctx.fillStyle='#0f0';
+            ctx.fillRect(-5,-8,10,16);
+        }
+        ctx.restore();
+    }
+    
+    // Move drop downward and render
+    update(){
+        this.position.y+=this.velocity.y;
+        this.draw();
+    }
+}
+
+// ============================================
+// GRID CLASS
+// Formation controller for groups of invaders
+// Handles movement patterns and collision detection
+// ============================================
+class Grid{
+    constructor(speed=difficulty.gridSpeed,color=getWaveColor(), type='rect'){
+        // Vertical descent speed (how fast formation moves down)
+        const approachSpeed=0.08+Math.min(0.12,(wave-1)*0.01);
+        
+        this.velocity={x:speed,y:approachSpeed};  // Horizontal and vertical movement
+        this.color=color;
+        this.invaders=[];  // Array of Invader instances in this grid
+        
+        // Calculate grid dimensions based on canvas size and wave number
+        const maxCols = Math.floor((canvas.width - 40) / 40); 
+        const cols = Math.min(10, Math.max(3, maxCols));  // 3-10 columns
+        const rows = Math.min(3+Math.floor(wave/3),6);    // More rows in later waves (max 6)
+    
+        // Center the grid horizontally
+        const gridWidth = cols * 40; 
+        const startX = (canvas.width - gridWidth) / 2;
+        
+        // Create invaders in formation based on type
+        for(let x=0;x<cols;x++){
+            for(let y=0;y<rows;y++){
+                let spawn = true;
+                
+                // Formation shape logic
+                if(type==='arrow'){
+                    // V-shaped arrow formation
+                    const center = cols/2;
+                    const dist = Math.abs(x - center + 0.5);
+                    if(y < dist - 1) spawn = false;  // Skip top corners
+                    
+                } else if(type==='split'){
+                    // Two columns with gap in middle
+                    const center = cols/2;
+                    if(x > center-1.5 && x < center+1.5) spawn = false;  // Skip middle
+                }
+                // type==='rect' spawns all positions (default)
+
+                if(spawn){
+                    // Determine invader type based on row
+                    let invType = 'large';
+                    if(y === 0) invType = 'small'; // Top row = Squid
+                    else if(y < 3) invType = 'medium'; // Middle rows = Crab
+                    // Bottom rows = Octopus (default)
+
+                    this.invaders.push(new Invader({
+                        position:{x:startX+x*40,y:80+y*45},  // Grid spacing
+                        color:this.color,
+                        type: invType
+                    }));
+                }
+            }
+        }
+    }
+    
+    // Update all invaders in grid and handle edge bouncing
+    update(frame){
+        this.position={x:0,y:0};  // Grid position reference
+        
+        // Dynamic speed scaling for last few invaders
+        let speedMultiplier = 1;
+        if(this.invaders.length <= 3){
+            speedMultiplier = 2.0; // 2x speed when few left
+        } else if(this.invaders.length <= 10){
+            speedMultiplier = 1.3; // Slight boost when thinning out
+        }
+
+        // Update each invader with grid velocity
+        this.invaders.forEach(i=>i.update({
+            velocity: {
+                x: this.velocity.x * speedMultiplier,
+                y: this.velocity.y
+            },
+            frame
+        }));
+        
+        // Edge detection and direction reversal
+        if(this.invaders.length>0){
+            // Find leftmost and rightmost invaders
+            const rightMost = this.invaders.reduce((a,b)=>b.position.x>a.position.x?b:a);
+            const leftMost = this.invaders.reduce((a,b)=>b.position.x<a.position.x?b:a);
+            
+            // If grid hits edge, reverse direction and move down
+            if((rightMost.position.x+30>=canvas.width && this.velocity.x>0) || 
+               (leftMost.position.x<=0 && this.velocity.x<0)){
+                this.velocity.x = -this.velocity.x;  // Reverse horizontal direction
+                this.invaders.forEach(inv => inv.position.y += 30);  // Drop down
+            }
+        }
+    }
+}
+
+// ============================================
+// BOSS CLASS
+// Large boss enemy with multiple phases
+// Appears every 11 waves or 100 waves (mega boss)
+// ============================================
+class Boss{
+    constructor(isMega=false){
+        this.isMega=isMega;
+        this.width=isMega?360:180;
+        this.height=isMega?140:70;
+        this.position={x:canvas.width/2-(isMega?180:90),y:60};
+        
+        // Movement speed increases with wave difficulty
+        this.velocity={x:2.4+Math.floor(wave/10)*0.5,y:0}; 
+        
+        // Health scales with wave and boss type
+        let baseHealth = 1600;
+        if(isMega) baseHealth = 8000; // Much tougher mega boss
+        this.health=baseHealth+Math.floor(wave/10)*1000; 
+        this.maxHealth=this.health;
+        
+        this.fireTimer=700;    // Milliseconds between attacks
+        this.dying=false;       // Death animation flag
+        this.deathTimer=0;      // Death animation countdown
+        this.phase=1;           // Combat phase (1-3, changes with HP)
+    }
+    
+    draw(){
+        ctx.save();
+        ctx.shadowColor=this.isMega?'#ff0000':'#ff00ff';  // Red for Mega, Magenta for Normal
+        ctx.shadowBlur=this.isMega?40:25;
+        
+        // Death animation effects
+        if(this.dying){
+            ctx.globalAlpha=0.5+Math.sin(performance.now()/50)*0.5;  // Flashing
+            ctx.translate((Math.random()-0.5)*10,(Math.random()-0.5)*10);  // Shaking
+        }
+        
+        const hue=this.isMega?0:270; // Red vs Purple base hue
+
+        // Main hull - turns brighter red in phase 3
+        ctx.fillStyle=this.phase===3 ? '#ff3333' : `hsl(${hue},100%,50%)`;
+        ctx.fillRect(this.position.x,this.position.y+15,this.width,this.height/2);
+        
+        // Upper fins/armor plates - darker shade
+        ctx.fillStyle=`hsl(${hue},100%,30%)`;
+        ctx.fillRect(this.position.x+20,this.position.y,this.width-40,this.height/3.5);
+        
+        // Side weapon spikes
+        ctx.fillStyle=`hsl(${hue},100%,40%)`;
+        ctx.fillRect(this.position.x-10,this.position.y+20,20,this.height/3.5);        // Left spike
+        ctx.fillRect(this.position.x+this.width-10,this.position.y+20,20,this.height/3.5);  // Right spike
+        
+        // Mega boss extra spikes
+        if(this.isMega){
+             ctx.fillStyle='#800000';
+             // Extra jagged bits
+             ctx.beginPath();
+             ctx.moveTo(this.position.x, this.position.y+15);
+             ctx.lineTo(this.position.x-20, this.position.y+5); // Top left spike
+             ctx.lineTo(this.position.x, this.position.y+25);
+             ctx.fill();
+             
+             ctx.beginPath();
+             ctx.moveTo(this.position.x+this.width, this.position.y+15);
+             ctx.lineTo(this.position.x+this.width+20, this.position.y+5); // Top right spike
+             ctx.lineTo(this.position.x+this.width, this.position.y+25);
+             ctx.fill();
+        }
+
+        // Engine glow (gradient fade)
+        const grad=ctx.createLinearGradient(this.position.x,this.position.y+this.height*0.7,this.position.x,this.position.y+this.height);
+        grad.addColorStop(0,'#ff6a00');           // Bright orange
+        grad.addColorStop(1,'rgba(255,106,0,0)'); // Fade to transparent
+        ctx.fillStyle=grad;
+        ctx.fillRect(this.position.x+10,this.position.y+this.height*0.7,this.width-20,this.height*0.2);
+        
+        // Central cockpit window
+        ctx.fillStyle=this.isMega ? '#ffff00' : '#fff'; // Yellow eyes for Mega
+        ctx.fillRect(this.position.x+this.width/2-15,this.position.y+5,30,this.height/4);
+        
+        // Pulsing hull effect for Mega Boss
+        if(this.isMega){
+             ctx.fillStyle=`rgba(255,0,0,${0.2 + Math.sin(performance.now()/200)*0.2})`;
+             ctx.fillRect(this.position.x,this.position.y+15,this.width,this.height/2);
+        }
+
+        ctx.restore();
+
+        // Health bar displayed at top of screen
+        if(!this.dying){
+            const barWidth=this.isMega?600:280;
+            // Background bar
+            ctx.fillStyle='rgba(255,255,255,0.2)';
+            ctx.fillRect(canvas.width/2-barWidth/2,25,barWidth,10);
+            
+            // Health bar - color changes based on HP percentage
+            const hpPct = this.health/this.maxHealth;
+            ctx.fillStyle=hpPct<0.3?'#f00':(hpPct<0.6?'#ff0':(this.isMega?'#ff0000':'#ff00ff'));
+            ctx.fillRect(canvas.width/2-barWidth/2,25,hpPct*barWidth,10);
+        }
+    }
+    
+    // Update boss movement, attack patterns, and death animation
+    update(delta){
+        // Handle death animation
+        if(this.dying){
+            this.deathTimer-=delta;
+            
+            // Spawn explosion particles during death
+            if(Math.random()<0.3){
+                createExplosion({
+                    position:{
+                        x:this.position.x+Math.random()*this.width,
+                        y:this.position.y+Math.random()*this.height
+                    },
+                    width:10,height:10
+                },'#ff00ff',10);
+            }
+            this.draw();
+            return;
+        }
+        
+        // Phase system - changes attack patterns based on remaining HP
+        const hpPct = this.health / this.maxHealth;
+        if(hpPct < 0.3) this.phase = 3;        // Critical phase (< 30% HP)
+        else if(hpPct < 0.6) this.phase = 2;   // Damaged phase (30-60% HP)
+        else this.phase = 1;                    // Full health phase (> 60% HP)
+        
+        // Speed increases in later phases
+        let speedMult = this.phase === 2 ? 1.5 : 1;
+        if(this.isMega && this.phase===3) speedMult = 2.5;  // Mega boss enraged
+
+        // Horizontal movement with edge bouncing
+        this.position.x+=this.velocity.x*speedMult;
+        if(this.position.x<=20 || this.position.x+this.width>=canvas.width-20){
+            this.velocity.x=-this.velocity.x;  // Reverse direction at edges
+            this.position.y=Math.min(this.position.y+12,canvas.height/2-100);  // Move down
+        }
+        
+        // Attack timer - fires different patterns based on phase
+        this.fireTimer-=delta;
+        if(this.fireTimer<=0){
+            // Black Hole Attack Logic (All bosses can shoot them now)
+            // Mega boss: 50% chance
+            // Normal boss: 10% chance (Phase 2/3 only)
+            const blackHoleChance = this.isMega ? 0.5 : (this.phase > 1 ? 0.1 : 0);
+            
+            if(Math.random() < blackHoleChance){
+                 this.shootBlackHole();
+                 this.fireTimer = this.isMega ? 1000 : 1800; // Slower follow-up (was 900/1500)
+            } else {
+                 // Standard Attacks
+                 // REDUCED FIRE RATE (slower by ~15%)
+                 this.fireTimer = this.isMega ? 460 : (this.phase===2?350:850);
+                 // Was: Mega 400, Phase2 300, Phase1/3 700-800
+                 
+                 if(this.isMega){
+                      // Mega Boss Mix
+                      const rand = Math.random();
+                      if(rand < 0.33) this.shootTri();
+                      else if(rand < 0.66) this.shootTargeted();
+                      else this.shootSpread();
+                 } else {
+                    // Normal Boss Phase Logic
+                    if(this.phase===1){
+                        this.fireTimer=850;    // Slow fire rate (was 700)
+                        this.shootTri();
+                    }else if(this.phase===2){
+                        this.fireTimer=350;    // Fast fire rate (was 300)
+                        this.shootTargeted();
+                    }else{
+                        this.fireTimer=950;    // Medium fire rate (was 800)
+                        this.shootSpread();
+                    }
+                 }
+            }
+        }
+        this.draw();
+    }
+    
+    // Death sequence - triggers explosion effects
+    explode(){
+        this.dying=true;
+        this.deathTimer=2500;  // 2.5 second death animation
+        shakeScreen(20,2500);
+        createFloatingText("BOSS DESTROYED!",canvas.width/2,canvas.height/2,'#ff00ff');
+        
+        // Large explosion effects
+        createExplosion(this, '#ff00ff', 100);
+        createExplosion({position:{x:this.position.x+this.width/2,y:this.position.y+this.height/2},width:0,height:0}, '#fff', 50);
+    }
+    
+    // Special attack - spawn a black hole (mega boss only)
+    shootBlackHole(){
+        const cx=this.position.x+this.width/2;
+        const muzzleY=this.position.y+this.height;
+        
+        // Create black hole projectile
+        blackHoles.push(new BlackHole({
+            position:{x:cx, y:muzzleY},
+            velocity:{x:0, y:3}  // Moves downward
+        }));
+        
+        createFloatingText("GRAVITY ANOMALY!", cx, muzzleY, '#9900ff');
+        audioSystem.playBlackHole();  // Eerie gravity sound
+    }
+    
+    // Phase 1 attack - three-way spread
+    shootTri(){
+        const cx=this.position.x+this.width/2;
+        const muzzleY=this.position.y+this.height;
+        
+        // Fire three projectiles with different angles
+        [-1.5,0,1.5].forEach((angle,idx)=>{
+            invaderProjectiles.push(new Projectile({
+                position:{x:cx+(idx-1)*22,y:muzzleY},  // Spread horizontally
+                velocity:{x:angle*1.2,y:4.2},          // Angled shots
+                color:'#ff0000',                       // Red
+                radius:6,
+                durability: 2, // Tougher
+                isBossShot: true
+            }));
+        });
+    }
+    
+    // Phase 2 attack - homing shot aimed at player
+    shootTargeted(){
+        const cx=this.position.x+this.width/2;
+        const muzzleY=this.position.y+this.height;
+        
+        // Calculate angle to player
+        const dx = (player.position.x+player.width/2) - cx;
+        const dy = player.position.y - muzzleY;
+        const ang = Math.atan2(dy, dx);
+        const speed = 7;
+        
+        // Fire fast homing projectile
+        invaderProjectiles.push(new Projectile({
+             position:{x:cx,y:muzzleY},
+             velocity:{x:Math.cos(ang)*speed,y:Math.sin(ang)*speed},
+             color:'#ff0000',  // Red warning
+             radius:7,
+             durability: 2,
+             isBossShot: true
+        }));
+    }
+    
+    // Phase 3 attack - wide five-way spread
+    shootSpread(){
+        const cx=this.position.x+this.width/2;
+        const muzzleY=this.position.y+this.height;
+        
+        // Fire five projectiles in wide spread pattern
+        [-2.5, -1.2, 0, 1.2, 2.5].forEach(angle => {
+           invaderProjectiles.push(new Projectile({
+               position:{x:cx,y:muzzleY},
+               velocity:{x:angle,y:4.5},  // Horizontal spread
+               color:'#ff00ff',           // Magenta
+               radius:6,
+               durability: 3, // Very tough
+               isBossShot: true
+           }));
+        });
+    }
+    
+    // Damage boss and reduce health
+    takeHit(dmg){
+        this.health=Math.max(0,this.health-dmg);
+    }
+}
+
+// ============================================
+// GAME UTILITY FUNCTIONS
+// Helper functions for gameplay mechanics
+// ============================================
+
+// Missile explosion - area of effect damage
+function explodeMissile(projectile, ignoredInvader=null){
+    // Get explosion center point
+    const projX = projectile.position.x;
+    const projY = projectile.position.y;
+    
+    // Create visual explosion effect
+    createExplosion({position: {x:projX, y:projY}, width:0, height:0}, '#ffa500', 40);
+    const radius = 80;  // Blast radius in pixels
+    
+    // Check all invaders for damage
+    for(let gIndex=grids.length-1; gIndex>=0; gIndex--){
+        const g = grids[gIndex];
+        for(let i=g.invaders.length-1; i>=0; i--){
+            const inv = g.invaders[i];
+            
+            // Skip invader that was directly hit (already destroyed) or already marked
+            if(inv === ignoredInvader || inv.markedForDeath) continue;
+            
+            // Calculate distance from explosion center to invader center
+            const cx = inv.position.x + inv.width/2;
+            const cy = inv.position.y + inv.height/2;
+            const dist = Math.hypot(cx - projX, cy - projY);
+            
+            // Destroy invaders within blast radius
+            if(dist < radius){
+                createExplosion(inv, inv.color, 10);
+                score += 100;
+                inv.markedForDeath = true;  // Mark for removal (avoid modifying array during iteration)
+            }
+        }
+    }
+}
+
+// Create explosion particle effect
+function createExplosion(obj,color,count=20,playSound=true){
+    // Spawn multiple particles radiating outward
+    for(let i=0;i<count;i++){
+        const p=spawnParticle({
+            position:{x:obj.position.x+obj.width/2,y:obj.position.y+obj.height/2},
+            velocity:{x:(Math.random()-0.5)*8,y:(Math.random()-0.5)*8},  // Random directions
+            radius:Math.random()*4+1,
+            color,
+            fades:true
+        });
+        if(!particlePool.includes(p)) particles.push(p);
+    }
+    shakeScreen(7,300);
+    if(playSound) play(sounds.explosion);
+}
+
+// Screen shake effect for impact
+function shakeScreen(intensity,duration){
+    shakeTimer=duration;     // How long to shake (ms)
+    shakeX=shakeY=intensity; // Shake magnitude in pixels
+}
+
+// Display floating text that rises and fades
+function createFloatingText(text,x,y,color='#fff'){
+    const el=document.createElement('div');
+    el.innerText=text;
+    el.style.position='absolute';
+    el.style.left=(x-50)+'px';
+    el.style.top=(y-30)+'px';
+    el.style.color=color;
+    el.style.fontSize='28px';
+    el.style.fontWeight='bold';
+    el.style.pointerEvents='none';
+    el.style.transition='all 1.2s ease-out';
+    el.style.textShadow='0 0 5px #000';
+    
+    document.getElementById('game-container').appendChild(el);
+    
+    // Animate upward and fade out
+    setTimeout(()=>{el.style.top=(y-100)+'px';el.style.opacity=0;},50);
+    setTimeout(()=>el.remove(),1300);  // Remove from DOM after animation
+}
+
+// Particle effect when player bullet intercepts enemy bullet
+function spawnBulletClash(x,y){
+    for(let i=0;i<8;i++){
+        const p=spawnParticle({
+            position:{x,y},
+            velocity:{x:(Math.random()-0.5)*4,y:(Math.random()-0.5)*4},
+            radius:Math.random()*2+1,
+            color:'#5ef8ff',  // Cyan spark
+            fades:true
+        });
+        if(!particlePool.includes(p)) particles.push(p);
+    }
+}
+
+// ============================================
+// COLLISION DETECTION FUNCTIONS
+// Various collision algorithms for different shape types
+// ============================================
+
+// Circle-to-circle collision (for projectiles)
+function circlesIntersect(a,b){
+    const dx=a.position.x-b.position.x;
+    const dy=a.position.y-b.position.y;
+    const combined=a.radius+b.radius;
+    // Use squared distance to avoid expensive sqrt calculation
+    return dx*dx+dy*dy <= combined*combined;
+}
+
+// Axis-aligned bounding box (AABB) collision for rectangles
+function rectsIntersect(a,b){
+    return a.position.x < b.position.x + b.width &&
+        a.position.x + a.width > b.position.x &&
+        a.position.y < b.position.y + b.height &&
+        a.position.y + a.height > b.position.y;
+}
+
+// Circle (projectile) to rectangle collision
+function projectileHitsRect(projectile,rect){
+    return projectile.position.x + projectile.radius > rect.position.x &&
+        projectile.position.x - projectile.radius < rect.position.x + rect.width &&
+        projectile.position.y + projectile.radius > rect.position.y &&
+        projectile.position.y - projectile.radius < rect.position.y + rect.height;
+}
+
+// ============================================
+// POWER-UP AND UPGRADE SYSTEMS
+// ============================================
+
+// Check if player should level up based on score
+function maybeUpgradeWeapons(){
+    if(!player) return;
+    // Only grant shield if player has it lost (auto recharge via score disabled, now boss reward)
+    // Actually, we can just remove the logic or keep it purely for shield recharge if desired.
+    // User said "take defeating a boss to get an additional stream". 
+    // So score-based upgrades are GONE.
+}
+
+// Check for player bullets intercepting enemy bullets
+// Rewards player with ammo for defensive play
+function handleProjectileInterceptions(){
+    for(let i=projectiles.length-1;i>=0;i--){
+        let destroyed=false;
+        
+        // Check if this player bullet hits any enemy bullet
+        for(let j=invaderProjectiles.length-1;j>=0;j--){
+            if(circlesIntersect(projectiles[i],invaderProjectiles[j])){
+                spawnBulletClash(projectiles[i].position.x,projectiles[i].position.y);
+                projectiles.splice(i,1);
+                
+                // Boss bullets are tough
+                const enemyProj = invaderProjectiles[j];
+                if(enemyProj.durability && enemyProj.durability > 1){
+                    enemyProj.durability--;
+                    enemyProj.radius *= 0.8; // Shrink slightly when hit
+                } else {
+                    invaderProjectiles.splice(j,1);
+                    // Reward player with points for intercepting (no ammo)
+                    if(player){
+                        score+=50;
+                        createFloatingText("BLOCKED!",player.position.x+player.width/2,player.position.y-30,'#aaa');
+                        updateUI();
+                    }
+                }
+                destroyed=true;
+                break;
+            }
+        }
+        if(destroyed) continue;
+    }
+}
+
+// Grant player a shield (absorbs 3 hits)
+function grantShield(silent=false){
+    if(!player) return;
+    if(player.shieldHP < SHIELD_MAX_HITS){
+        player.shieldHP = SHIELD_MAX_HITS;
+        if(!silent) createFloatingText("SHIELD RESTORED",player.position.x+player.width/2,player.position.y-55,'#6ffbff');
+    } else {
+        // Shield already full, add a bonus hit point
+        player.shieldHP++;
+        if(!silent) createFloatingText("SHIELD BOOST +1",player.position.x+player.width/2,player.position.y-55,'#00ffff');
+    }
+    player.shieldPulse=18; // Visual pulse effect
+}
+
+// Particle effect when shield is hit
+function spawnShieldBurst(){
+    if(!player) return;
+    const cx=player.position.x+player.width/2;
+    const cy=player.position.y+4;
+    
+    // Spawn cyan particles upward
+    for(let i=0;i<14;i++){
+        const p=spawnParticle({
+            position:{x:cx,y:cy},
+            velocity:{x:(Math.random()-0.5)*4,y:-Math.random()*3},  // Upward spray
+            radius:Math.random()*2+0.5,
+            color:'#7fe0ff',
+            fades:true
+        });
+        if(!particlePool.includes(p)) particles.push(p);
+    }
+}
+
+// Attempt to absorb hit with shield (returns true if absorbed)
+function absorbShieldHit(){
+    if(player && player.shieldHP>0){
+        player.shieldHP--;          // Reduce shield HP
+        player.shieldPulse=18;      // Trigger visual pulse
+        spawnShieldBurst();         // Particle effect
+        
+        // Notify when shield breaks
+        if(player.shieldHP===0){
+            createFloatingText("Shield Down",player.position.x+player.width/2,player.position.y-45,'#6ffbff');
+        }
+        return true;  // Hit was absorbed
+    }
+    return false;  // No shield, hit goes through
+}
+
+// ============================================
+// SHOOTING MECHANICS
+// Handle player weapon firing
+// ============================================
+
+function shoot(){
+    // Don't shoot if game not active or out of ammo
+    if(!gameActive||gamePaused||player.ammo<=0) return;
+    
+    player.ammo--;
+    updateUI();
+    
+    const originX=player.position.x+player.width/2;  // Shoot from ship center
+    const originY=player.position.y;
+
+    // Missile weapon - explosive area damage
+    if(player.weaponType === 'missile'){
+        audioSystem.playShot('missile', player.powerLevel||1);
+        projectiles.push(new Projectile({
+            position:{x:originX,y:originY},
+            velocity:{x:0,y:-7},      // Slower than bullets
+            color:'#ffa500',          // Orange
+            radius: 6,
+            type: 'missile'
+        }));
+        return;
+    }
+    
+    // Laser weapon - fast piercing beam
+    if(player.weaponType === 'laser'){
+        audioSystem.playShot('laser', player.powerLevel||1);
+        projectiles.push(new Projectile({
+            position:{x:originX,y:originY},
+            velocity:{x:0,y:-18},     // Very fast
+            color:'#00f',             // Blue
+            radius: 3,
+            type: 'laser'
+        }));
+        return;
+    }
+
+    audioSystem.playShot('bullet', player.powerLevel||1);
+
+    // Standard bullet weapon - uses power level pattern
+    const level=player.powerLevel||1;
+    const pattern=SHOT_PATTERNS[level]||SHOT_PATTERNS[MAX_POWER_LEVEL];
+    
+    // Spawn projectiles according to pattern (1-5 bullets)
+    pattern.forEach(shot=>{
+        projectiles.push(new Projectile({
+            position:{x:originX+shot.offset,y:originY},
+            velocity:{x:shot.xVel,y:shot.yVel},
+            color:level>=3?'#7fffd4':'#ffffff'  // Cyan for level 3+, white for lower
+        }));
+    });
+}
+
+// ============================================
+// BARRIER CREATION
+// Create destructible cover barriers
+// ============================================
+
+function createBarriers(){
+    barriers = [];
+    
+    // Use the configured barrier count from the slider
+    const barrierCount = barrierCountConfig;
+    if(barrierCount <= 0) return;
+
+    const barrierWidth = 72;  // 6 blocks * 12px each
+    
+    // Calculate spacing to distribute evenly
+    const totalWidth = canvas.width;
+    const margin = totalWidth * 0.1;        // 10% margin on each side
+    const availableWidth = totalWidth - (margin * 2);
+    
+    // If only 1 barrier, center it. Otherwise distribute.
+    const spacing = barrierCount > 1 ? availableWidth / (barrierCount - 1) : 0;
+    const centerOffset = barrierCount === 1 ? availableWidth / 2 : 0;
+    
+    // Create each barrier
+    for(let i=0; i<barrierCount; i++){
+        const startX = margin + centerOffset + (spacing * i) - (barrierWidth/2);
+        const startY = canvas.height - 170;  // Above player but below invaders
+        
+        // Each barrier is a 6x4 grid of blocks
+        for(let r=0; r<4; r++){
+            for(let c=0; c<6; c++){
+                // Skip top corners for rounded appearance
+                if((r===0 && (c===0 || c===5))) continue;
+                
+                barriers.push(new BarrierBlock({
+                    position: {
+                        x: startX + c*12,
+                        y: startY + r*12
+                    }
+                }));
+            }
+        }
+    }
+}
+
+function updateBarrierConfig(val){
+    barrierCountConfig = parseInt(val);
+    document.getElementById('barrier-count-display').innerText = barrierCountConfig;
+}
+
+// ============================================
+// GAME INITIALIZATION
+// Reset and setup for new game
+// ============================================
+
+function init(){
+    // Create player ship
+    player=new Player();
+    
+    // Survival mode starts with limited resources
+    if(gameMode === 'survival'){
+        player.lives = 1;   // Permadeath
+        player.ammo = 15;   // Limited ammo
+    }
+    
+    // Clear all entity arrays
+    stopAllUfoAudio();
+    projectiles=[];
+    grids=[];
+    ufos=[];
+    invaderProjectiles=[];
+    particles=[];
+    meteors=[];
+    
+    // Reset game state
+    score=0;
+    wave=1;
+    ufosKilled=0;
+    ufoSpawnTimer=0;
+    lastDropTime=0;
+    gameActive=true;
+    gamePaused=false;
+    lastTime=0;
+    boss=null;
+    
+    // Mode-specific timer setup
+    if(gameMode === 'time_attack'){
+        gameTime = 7 * 60 * 1000;  // 7 minutes countdown (milliseconds)
+    } else {
+        gameTime = 0;
+    }
+    
+    // Clear all key states
+    Object.values(keys).forEach(key=>key.pressed=false);
+    
+    // Setup difficulty and first wave
+    refreshDifficulty();
+    grids=[new Grid(difficulty.gridSpeed,getWaveColor(1))];
+    createBarriers();
+    
+    // Hide pause overlay and update HUD
+    pauseOverlay.classList.add('hidden');
+    updateUI();
+}
+
+// ============================================
+// UI UPDATE FUNCTION
+// Refresh HUD display with current game state
+// ============================================
+
+function updateUI(){
+    // Update basic stats
+    scoreEl.innerText=score;
+    waveEl.innerText=boss?'BOSS':wave;  // Show "BOSS" instead of wave number during boss fight
+    highScoreEl.innerText=highScore;
+    
+        // Time Attack mode - show countdown timer
+        const extraInfo = document.getElementById('extra-info');
+        const timerEl = document.getElementById('timer');
+        if(gameMode === 'time_attack'){
+            extraInfo.style.display = 'block';
+            
+            // Format MM:SS
+            const totalSeconds = Math.ceil(gameTime/1000);
+            const mins = Math.floor(totalSeconds / 60);
+            const secs = totalSeconds % 60;
+            timerEl.innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+            
+            // Red warning when time is low
+            if(gameTime < 10000) timerEl.style.color = '#f00';
+            else timerEl.style.color = '#ffeb3b';
+        } else {
+            extraInfo.style.display = 'none';
+        }
+
+    // Show combo multiplier if active
+    if(comboCount > 1){
+        scoreEl.innerHTML = `${score} <span style="color:#ffff00; font-size:0.8em">x${comboCount}</span>`;
+    } else {
+        scoreEl.innerText = score;
+    }
+
+    // Update player stats and check for upgrades
+    if(player) {
+        ammoEl.innerText=player.ammo;
+        livesEl.innerText=player.lives;
+        
+        // Update Shield UI
+        const shieldEl = document.getElementById('shield-val');
+        if(shieldEl){
+            shieldEl.innerText = player.shieldHP;
+            shieldEl.style.color = player.shieldHP > 0 ? '#00ffff' : '#555';
+        }
+
+        ammoEl.classList.toggle('low-ammo',player.ammo<=5);  // Pulsing warning when low
+        maybeUpgradeWeapons();  // Check if player earned upgrade
+    }
+}
+
+// ============================================
+// GAME OVER FUNCTION
+// End game and show results
+// ============================================
+
+function endGame(reason=''){
+    gameActive=false;
+    gamePaused=false;
+    pauseOverlay.classList.add('hidden');
+    stopAllUfoAudio();
+    audioSystem.stopMusic();
+    
+    // Update high score if beaten
+    if(score>highScore){
+        highScore=score;
+        localStorage.setItem('invaders_hs',highScore);  // Persist to browser storage
+    }
+    if(menuHighScoreEl) menuHighScoreEl.innerText = `HIGH SCORE: ${highScore}`;
+    
+    // Build game over message with context
+    const bossContext=boss || (reason && reason.toLowerCase().includes('boss'));
+    const waveLabel=bossContext?'BOSS':wave;
+    finalScoreEl.innerText=`Final Score: ${score} • Wave ${waveLabel}${reason?` • ${reason}`:''}`;
+    
+    // Time Attack mode - show remaining time (unless timed out)
+    if(gameMode==='time_attack' && reason!=='TIME UP'){
+        const totalSeconds = Math.ceil(gameTime/1000);
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        finalScoreEl.innerText += `\nTime Remaining: ${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+    
+    gameOverScreen.classList.remove('hidden');
+}
+
+// ============================================
+// GAME START FUNCTION
+// Initialize and begin game with selected mode
+// ============================================
+
+function startGame(mode='classic'){
+    gameMode = mode;
+    audioSystem.startMusic();
+    init();
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+    requestAnimationFrame(animate);  // Start game loop
+}
+
+// Spawn a boss enemy
+function spawnBoss(){
+    const isMega=(wave%30===0);  // Every 30 waves is a mega boss
+    boss=new Boss(isMega);
+    createFloatingText(isMega?"MEGA BOSS!!":"BOSS!",canvas.width/2,canvas.height/2-80,isMega?'#ff0000':'#ff00ff');
+}
+
+// Handle boss defeat and rewards
+function defeatBoss(){
+    if(!boss || boss.dying) return;
+    
+    boss.explode();
+    
+    // Score Reward: 7,500 for Normal, 50,000 for Mega
+    const bossPoints = boss.isMega ? 50000 : 7500;
+    score+=bossPoints;
+    createFloatingText(`+${bossPoints}`, boss.position.x+boss.width/2, boss.position.y, '#ffff00');
+    
+    // WEAPON UPGRADE REWARD
+    if(player.powerLevel < MAX_POWER_LEVEL){
+        player.powerLevel++;
+        createFloatingText(`WEAPON UPGRADE! Lv.${player.powerLevel}`,player.position.x+player.width/2,player.position.y-40,'#00ff00');
+        audioSystem.playLevelUp(); // Level up sound
+    } else {
+        score += 5000; // Bonus score if maxed
+        createFloatingText("MAX POWER BONUS!",player.position.x+player.width/2,player.position.y-40,'#ffff00');
+    }
+    grantShield(); // Always refresh shield on boss kill
+
+    // Time Attack mode bonus - reset timer
+    if(gameMode === 'time_attack'){
+        gameTime += 60 * 1000;  // Add 1 minute
+        createFloatingText("TIME EXTENDED +1 MIN!", canvas.width/2, canvas.height/2 + 50, '#ffff00');
+    }
+
+    invaderProjectiles=[];  // Clear enemy bullets during victory celebration
+    updateUI();
+}
+
+// Toggle pause state
+function togglePause(){
+    if(!gameActive) return;
+    gamePaused=!gamePaused;
+    pauseOverlay.classList.toggle('hidden',!gamePaused);
+    
+    // Reset time tracking when unpausing to avoid delta time jump
+    if(!gamePaused){
+        lastTime=0;
+    }
+}
+
+// Return to main menu from pause or game over
+function returnToMenu(){
+    gameActive = false;
+    gamePaused = false;
+    pauseOverlay.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+    startScreen.classList.remove('hidden');
+    stopAllUfoAudio();
+    audioSystem.stopMusic();
+}
+
+// Dev Mode Functions
+function toggleDevMenu(){
+    const menu = document.getElementById('dev-menu');
+    menu.classList.toggle('hidden');
+}
+
+function startDevGame(){
+    const waveInput = document.getElementById('dev-wave-input');
+    let startWave = parseInt(waveInput.value);
+    if(isNaN(startWave) || startWave < 1) startWave = 1;
+    
+    // Start game but override wave
+    startGame('classic');
+    
+    // Apply wave override
+    wave = startWave;
+    refreshDifficulty();
+    
+    // If warping to Boss wave, clear grid and spawn boss immediately
+    if((wave%30===0 || wave%11===0)){
+        grids = [];
+        spawnBoss();
+    } else {
+        // Just harder grid
+        grids=[new Grid(difficulty.gridSpeed,getWaveColor(wave),getFormationType())];
+    }
+    updateUI();
+    
+    // Give player some upgrades for high levels
+    if(wave > 10) {
+        player.powerLevel = Math.min(4, 1 + Math.floor(wave/20));
+        player.weaponType = 'missile';
+        player.ammo = 100;
+        grantShield();
+    }
+}
+
+// Get formation type for current wave
+function getFormationType(){
+    if(wave < 3) return 'rect';  // Early waves are simple rectangles
+    
+    const r = Math.random();
+    if(r < 0.5) return 'rect';      // 50% rectangle
+    if(r < 0.75) return 'arrow';    // 25% arrow/V shape
+    return 'split';                 // 25% split formation
+}
+
+// ============================================
+// SPAWN TIMER CONTROLS
+// Limits drop frequency to prevent spamming
+// ============================================
+// lastDropTime is declared in GAME STATE VARIABLES above
+const MIN_DROP_INTERVAL = 1000; // Minimum 1 second between drops (was 2s)
+
+// Randomly spawn power-up drop at position
+function createDrop(x,y){
+    // Rate Limiting: Check if we've dropped something recently
+    const now = performance.now();
+    if (now - lastDropTime < MIN_DROP_INTERVAL) return;
+
+    const rand=Math.random();
+    let type=null;
+    
+    // Probability distribution for drop types
+    // INCREASED RATES (boosted back up slightly)
+    if(rand<0.005) type='life';            // 0.5% - Extra life (was 0.25%)
+    else if(rand<0.02) type='shield';      // 1.5% - Shield (was 0.75%)
+    else if(rand<0.025) type='fullauto';   // 0.5% - Full Auto (was 0.2%)
+    else if(rand<0.055) type='laser';      // 3.0% - Laser weapon (was 1.5%)
+    else if(rand<0.085) type='missile';    // 3.0% - Missile weapon (was 1.5%)
+    else if(rand<0.125) type='ammo';       // 4.0% - Ammo refill (was 1.8%)
+    // ~87.5% chance of no drop (was ~94%)
+    
+    if(type){
+        drops.push(new Drop({position:{x,y},type}));
+        lastDropTime = now; // Update last drop timestamp
+    }
+}
+
+// ============================================
+// MAIN GAME LOOP
+// Core update and render loop - runs every frame
+// ============================================
+
+function animate(time){
+    // Stop loop if game is over
+    if(!gameActive) return;
+    
+    // Keep loop running but don't update while paused
+    if(gamePaused){
+        requestAnimationFrame(animate);
+        return;
+    }
+    
+    // Calculate delta time (time since last frame in milliseconds)
+    if(!lastTime) lastTime=time;
+    const delta=time-lastTime;
+    lastTime=time;
+    
+    // Update spawn timers
+    ufoSpawnTimer+=delta;
+
+    // ============================================
+    // METEOR SPAWNING AND UPDATE
+    // Meteors appear in later waves as additional hazard
+    // ============================================
+    
+    if(gameActive && wave > 2 && Math.random() < 0.005 + (wave*0.0005)){
+        meteors.push(new Meteor());
+    }
+    
+    // Process all active meteors
+    for(let i=meteors.length-1; i>=0; i--){
+        const m = meteors[i];
+        m.update();
+        if(m.position.y > canvas.height + 50){
+            meteors.splice(i,1);
+            continue;
+        }
+        
+        // Hit Player
+        // Meteor uses center position, rectsIntersect expects topleft
+        const mRect = {position:{x:m.position.x-m.size, y:m.position.y-m.size}, width:m.size*2, height:m.size*2};
+        
+        if(rectsIntersect(mRect, player)){
+            if(absorbShieldHit()){
+                 play(sounds.hit);
+                 createExplosion({position:m.position, width:0,height:0}, '#a0522d', 20);
+                 meteors.splice(i,1);
+                 continue;
+            }
+            player.lives--;
+            player.fullAuto = false; // Lose full auto on death
+            play(sounds.playerhit);
+            createExplosion(player, '#0f0', 50);
+            updateUI();
+            if(player.lives<=0) endGame('Meteor Impact');
+            else player.position.x = canvas.width/2;
+            meteors.splice(i,1);
+            continue;
+        }
+        
+        // Hit Barrier
+        for(let b of barriers){
+            if(b.health>0 && rectsIntersect(mRect, b)){
+                b.health -= m.damage;
+                createExplosion(b, '#0f0', 10);
+                createExplosion({position:m.position, width:0,height:0}, '#a0522d', 10);
+                meteors.splice(i,1);
+                break;
+            }
+        }
+        
+        // Hit by Player Bullet
+        for(let j=projectiles.length-1; j>=0; j--){
+            const p = projectiles[j];
+            const dist = Math.hypot(p.position.x - m.position.x, p.position.y - m.position.y);
+            if(dist < m.size + p.radius){
+                 createExplosion({position:m.position, width:0, height:0}, '#a0522d', 15);
+                 score += 10;
+                 if(player){
+                     player.ammo += 30; // Bonus ammo for asteroid destruction
+                     createFloatingText("+30 AMMO", m.position.x, m.position.y, '#0f0');
+                 }
+                 meteors.splice(i,1);
+                 projectiles.splice(j,1);
+                 updateUI();
+                 break;
+            }
+        }
+    }
+
+    // ============================================
+    // BLACK HOLE GRAVITY SYSTEM
+    // Process black holes and their gravity effects
+    // ============================================
+    
+    for(let i=blackHoles.length-1; i>=0; i--){
+        const bh = blackHoles[i];
+        bh.update();
+        if(bh.position.y > canvas.height + 100){
+             blackHoles.splice(i,1);
+             continue;
+        }
+
+        // Pull Player
+        const cx = player.position.x + player.width/2;
+        const cy = player.position.y + player.height/2;
+        const dx = bh.position.x - cx;
+        const dy = bh.position.y - cy;
+        const dist = Math.hypot(dx, dy);
+        
+        if(dist < bh.pullRange){
+            const force = 5000 / (dist*dist + 100); // Inverse square-ish
+            const angle = Math.atan2(dy, dx);
+            player.position.x += Math.cos(angle) * force;
+            // Visual Suck Effect (Particle stream)
+            if(Math.random()<0.3){
+                 const p = spawnParticle({
+                     position:{x:cx, y:cy},
+                     velocity:{x:(Math.random()-0.5)*2, y:(Math.random()-0.5)*2},
+                     radius:2, color:'#fff', fades:true
+                 });
+                 // Hack particle to suck in
+                 p.velocity.x += Math.cos(angle)*5;
+                 p.velocity.y += Math.sin(angle)*5;
+            }
+        }
+
+        // Event Horizon Death
+        if(dist < bh.eventHorizon + 20){ // 20px tolerance
+             player.lives=0;
+             player.fullAuto = false;
+             createExplosion(player, '#9932cc', 60);
+             updateUI();
+             endGame('Singularity');
+             return;
+        }
+        
+        // Suck Projectiles
+        for(let j=projectiles.length-1; j>=0; j--){
+             const p = projectiles[j];
+             const pdx = bh.position.x - p.position.x;
+             const pdy = bh.position.y - p.position.y;
+             const pDist = Math.hypot(pdx, pdy);
+             if(pDist < bh.pullRange){
+                 const ang = Math.atan2(pdy, pdx);
+                 p.velocity.x += Math.cos(ang) * 0.5;
+                 p.velocity.y += Math.sin(ang) * 0.5;
+                 if(pDist < bh.eventHorizon){
+                     projectiles.splice(j,1);
+                 }
+             }
+        }
+    }
+
+    // ============================================
+    // RENDERING - Background and Effects
+    // Clear screen and draw starfield
+    // ============================================
+    
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.2)';  // Semi-transparent black for motion trails
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Screen shake effect (applied to entire canvas)
+    if(shakeTimer>0){
+        ctx.translate((Math.random()-0.5)*shakeX,(Math.random()-0.5)*shakeY);
+        shakeTimer-=delta; shakeX*=0.95; shakeY*=0.95;
+    }
+
+    // Stars
+    stars.forEach(s=>{
+        s.y+=s.s; 
+        if(s.y>canvas.height) s.y=0; 
+        ctx.fillStyle=`rgba(255,255,255,${s.alpha})`;
+        ctx.fillRect(s.x,s.y,s.size,s.size);
+    });
+
+    // ============================================
+    // GAME MODE SPECIFIC LOGIC
+    // Time limits, survival tracking, etc.
+    // ============================================
+    
+    if(gameMode === 'time_attack'){
+        gameTime -= delta;
+        if(gameTime <= 0){
+            gameTime = 0;
+            endGame('TIME UP');
+            return;
+        }
+        // Update timer UI every 100ms
+        if(gameTime % 100 < delta) updateUI();
+    } else if(gameMode === 'survival'){
+        gameTime += delta;  // Track survival time
+    }
+
+    // ============================================
+    // COMBO SYSTEM
+    // Countdown timer for combo multiplier
+    // ============================================
+    
+    if(comboTimer > 0){
+        comboTimer -= delta;
+        if(comboTimer <= 0) comboCount = 0;
+    }
+
+    // ============================================
+    // BARRIERS
+    // Draw and cleanup destroyed barrier blocks
+    // ============================================
+    
+    barriers.forEach(b => b.draw());
+    
+    // Remove destroyed barrier blocks
+    // barriers = barriers.filter(b => b.health > 0); // Optimization: remove dead blocks? 
+    // Actually keeping them in array but not drawing might be safer for grid alignment if we expanded, 
+    // but here they are independent blocks.
+    // Let's clean up dead blocks to save checks.
+    for(let i=barriers.length-1; i>=0; i--){
+        if(barriers[i].health <= 0) barriers.splice(i,1);
+    }
+
+    // ============================================
+    // PLAYER UPDATE
+    // Handle movement and rendering
+    // ============================================
+    
+    player.update(delta);
+
+    // ============================================
+    // BOSS UPDATE AND COLLISION
+    // Boss fight logic
+    // ============================================
+    
+    if(boss){
+        boss.update(delta);
+        if(boss.dying){
+            if(boss.deathTimer<=0){
+                boss=null;
+                wave++;
+                refreshDifficulty();
+                grids.push(new Grid(difficulty.gridSpeed,getWaveColor(wave),getFormationType()));
+                ufoSpawnTimer=0;
+                updateUI();
+            }
+        }else if(rectsIntersect(boss,player)){
+            if(absorbShieldHit()){
+                play(sounds.hit);
+                player.position.x=canvas.width/2-player.width/2;
+            }else{
+                player.lives=0;
+                player.fullAuto = false; // Lose full auto on death
+                play(sounds.playerhit);
+                createExplosion(player,'#0f0',60);
+                updateUI();
+                endGame('Boss Impact');
+                return;
+            }
+        }
+    } else if(grids.length===0 && wave > 0 && (wave%30===0 || wave%11===0)){
+         // INFINITE PROGRESSION: Spawn Boss logic
+         // Spawns boss if grids are cleared AND it's a boss wave
+         spawnBoss();
+    } else if(grids.length===0 && wave > 0) {
+         // Regular wave transition
+         createFloatingText("WAVE COMPLETE!",canvas.width/2,canvas.height/2-50,'#0ff');
+         wave++;
+         refreshDifficulty();
+         grids.push(new Grid(difficulty.gridSpeed,getWaveColor(wave),getFormationType()));
+         updateUI();
+    }
+
+    // ============================================
+    // POWER-UP DROPS
+    // Handle falling power-ups and player collection
+    // ============================================
+    
+    for(let i=drops.length-1;i>=0;i--){
+        const d=drops[i];
+        d.update();
+        if(d.position.y>canvas.height){
+            drops.splice(i,1);
+            continue;
+        }
+        if(rectsIntersect(player,d)){
+            if(d.type==='life'){
+                player.lives++;
+                createFloatingText("+1 LIFE",player.position.x,player.position.y-20,'#b300ff');
+            }else if(d.type==='shield'){
+                grantShield();
+            }else if(d.type==='laser'){
+                if(player.weaponType === 'laser'){
+                    player.ammo+=50;
+                    score+=500;
+                    createFloatingText("AMMO REFILLED!",player.position.x,player.position.y-20,'#00f');
+                } else {
+                    player.weaponType='laser';
+                    player.ammo+=50;
+                    createFloatingText("LASER EQUIPPED!",player.position.x,player.position.y-20,'#00f');
+                }
+            }else if(d.type==='missile'){
+                if(player.weaponType === 'missile'){
+                    player.ammo+=20;
+                    score+=500;
+                    createFloatingText("AMMO REFILLED!",player.position.x,player.position.y-20,'#ffa500');
+                } else {
+                    player.weaponType='missile';
+                    player.ammo+=15;
+                    createFloatingText("MISSILES EQUIPPED!",player.position.x,player.position.y-20,'#ffa500');
+                }
+            }else if(d.type==='fullauto'){
+                player.fullAuto = true;
+                createFloatingText("FULL AUTO!",player.position.x,player.position.y-20,'#fff');
+            }else{
+                player.ammo+=30;
+                createFloatingText("+30 AMMO",player.position.x,player.position.y-20,'#0f0');
+            }
+            drops.splice(i,1);
+            updateUI();
+        }
+    }
+
+    // ============================================
+    // UFO SPAWNING AND UPDATE
+    // Bonus ships that fly across top of screen
+    // ============================================
+    
+    if(!boss && ufoSpawnTimer>difficulty.ufoInterval && ufos.length===0){
+        if(wave > 5 && Math.random() < 0.3){
+            // Double UFO
+            ufos.push(new UFO(1)); // Left
+            ufos.push(new UFO(-1)); // Right
+        } else {
+            ufos.push(new UFO()); 
+        }
+        ufoSpawnTimer=0;
+    }
+
+    // ============================================
+    // PARTICLE EFFECTS UPDATE
+    // Update and cleanup visual effect particles
+    // ============================================
+    
+    for(let i=particles.length-1;i>=0;i--){
+        particles[i].update();
+        if(particles[i].dead){
+            particles.splice(i,1);
+        }
+    }
+    for(let i=ufos.length-1;i>=0;i--){
+        const u=ufos[i]; u.update();
+        const offLeft=-u.width-80;
+        const offRight=canvas.width+u.width+80;
+        if(u.position.x<offLeft||u.position.x>offRight){
+            if(typeof u.cleanupAudio === 'function') u.cleanupAudio();
+            ufos.splice(i,1);
+            continue;
+        }
+        for(let j=projectiles.length-1;j>=0;j--){
+            const p=projectiles[j];
+            if(p.position.y-p.radius<u.position.y+u.height&&p.position.x+p.radius>u.position.x&&p.position.x-p.radius<u.position.x+u.width&&p.position.y+p.radius>u.position.y){
+                audioSystem.playUfoExplosion();
+                createExplosion(u,'#ff00ff',30,false); score+=500; player.ammo+=10; ufosKilled++;
+                createFloatingText(ufosKilled%3===0?"+1 LIFE!":"+10 AMMO",u.position.x+30,u.position.y,'#ff00ff');
+                if(ufosKilled%3===0){player.lives++; createFloatingText("+1 LIFE!",canvas.width/2,100,'#b300ff');}
+                if(typeof u.cleanupAudio === 'function') u.cleanupAudio();
+                ufos.splice(i,1); projectiles.splice(j,1); updateUI(); break;
+            }
+        }
+    }
+
+    // ============================================
+    // INVADER GRID LOGIC
+    // Update formations, handle shooting, collisions
+    // ============================================
+    
+    for(let g=grids.length-1;g>=0;g--){
+        const grid=grids[g]; grid.update(time);
+        const fireChanceThisFrame=difficulty.fireChance*delta;
+        if(grid.invaders.length>0 && Math.random()<fireChanceThisFrame){
+            grid.invaders[Math.floor(Math.random()*grid.invaders.length)].shoot();
+            audioSystem.playEnemyShot();
+        }
+        for(let i=grid.invaders.length-1;i>=0;i--){
+            const inv=grid.invaders[i];
+            if(inv.markedForDeath){
+                grid.invaders.splice(i,1);
+                continue;
+            }
+            
+            // Barrier eating (Invader collides with barrier)
+            for(let bIndex=barriers.length-1; bIndex>=0; bIndex--){
+                const b = barriers[bIndex];
+                if(rectsIntersect(inv, b)){
+                    b.health = 0; // Instantly destroy barrier block
+                    createExplosion(b, '#0f0', 5);
+                }
+            }
+
+            // Player bullet hits invader
+            for(let j=projectiles.length-1;j>=0;j--){
+                const p=projectiles[j];
+                // 2X COLLISION RADIUS FOR BOSS SHOTS (handled in player hit, but this is vs invaders)
+                // Standard invader collision
+                if(p.position.y-p.radius<inv.position.y+inv.height&&p.position.x+p.radius>inv.position.x&&p.position.x-p.radius<inv.position.x+inv.width&&p.position.y+p.radius>inv.position.y){
+                    // If it's a missile, trigger the explosion logic
+                    if(p.type === 'missile') {
+                        explodeMissile(p, inv);
+                    }
+
+                    // Combo Logic
+                    comboCount++;
+                    comboTimer = COMBO_WINDOW;
+                    const baseScore = 100;
+                    const multiplier = 1 + (comboCount > 1 ? (comboCount-1)*0.2 : 0); // 20% bonus per chain
+                    const points = Math.floor(baseScore * multiplier);
+                    score += points;
+                    
+                    if(comboCount > 1){
+                        createFloatingText(`${comboCount}x`, inv.position.x, inv.position.y - 15, '#ffff00');
+                    }
+
+                    createExplosion(inv,inv.color||'#f00'); 
+                    player.ammo+=2;
+                    createDrop(inv.position.x,inv.position.y);
+                    
+                    // Mark this invader as dead instead of splicing immediately if we are in a complex loop context, 
+                    // but here we are safely iterating 'i' in reverse, so splicing is technically OK for THIS invader.
+                    // However, consistent logic is better. Let's just splice THIS one as it is the primary target.
+                    // BUT, to be safe with the missile logic above (which might mark neighbors), let's mark this one too.
+                    inv.markedForDeath = true;
+
+                    // Only remove projectile if it's NOT a laser (lasers pierce)
+                    if(p.type !== 'laser') projectiles.splice(j,1);
+                    
+                    updateUI(); 
+                    break; 
+                }
+            }
+            // Invader reaches player
+            if(inv.position.y+inv.height>=player.position.y){
+                if(absorbShieldHit()){
+                    play(sounds.hit);
+                    grid.invaders.splice(i,1);
+                    continue;
+                }
+                player.lives--; 
+                player.fullAuto = false; // Lose full auto on death
+                play(sounds.playerhit); 
+                createExplosion(player,'#0f0',40);
+                if(player.lives<=0) endGame();
+                else player.position.x=canvas.width/2-player.width/2;
+                updateUI();
+            }
+        }
+        if(grid.invaders.length===0){
+            grids.splice(g,1);
+            createFloatingText("WAVE COMPLETE!",canvas.width/2,canvas.height/2-50,'#0ff');
+            wave++;
+            
+            // Reset weapon unless we have full auto (which is permanent)
+            if(player.weaponType !== 'bullet'){
+                // Temporary weapons reset each wave
+                player.weaponType = 'bullet';
+                createFloatingText("WEAPON RESET",player.position.x+player.width/2,player.position.y-40,'#fff');
+            }
+
+            refreshDifficulty();
+            updateUI();
+            if((wave%10===0) && !boss){
+                spawnBoss();
+            }else if(grids.length===0 && !boss){
+                grids.push(new Grid(difficulty.gridSpeed,getWaveColor(wave),getFormationType()));
+                ufoSpawnTimer=0;
+            }
+        }
+    }
+
+    // ============================================
+    // PROJECTILE INTERCEPTION SYSTEM
+    // Player bullets can destroy enemy bullets
+    // ============================================
+    
+    handleProjectileInterceptions();
+
+    // ============================================
+    // PLAYER PROJECTILE UPDATE
+    // Update player bullets and check collisions
+    // ============================================
+    
+    for(let i=projectiles.length-1;i>=0;i--){
+        const shot=projectiles[i];
+        if(shot.position.y<=0){
+            projectiles.splice(i,1);
+            continue;
+        }
+        shot.update();
+
+        // Barrier Collision (Player Bullets)
+        let hitBarrier = false;
+        for(let bIndex=barriers.length-1; bIndex>=0; bIndex--){
+            const b = barriers[bIndex];
+            if(projectileHitsRect(shot, b)){
+                b.health -= getProjectileDamage();
+                createExplosion(b, '#0f0', 5); 
+                projectiles.splice(i,1);
+                hitBarrier = true;
+                break;
+            }
+        }
+        if(hitBarrier) continue;
+
+        if(boss && projectileHitsRect(shot,boss)){
+            spawnBulletClash(shot.position.x,shot.position.y);
+            boss.takeHit(getProjectileDamage());
+            projectiles.splice(i,1);
+            if(boss.health<=0){
+                defeatBoss();
+                break;
+            }
+        }
+    }
+
+    // ============================================
+    // ENEMY PROJECTILE UPDATE
+    // Update enemy bullets and check player hits
+    // ============================================
+    
+    for(let i=invaderProjectiles.length-1;i>=0;i--){
+        const p=invaderProjectiles[i];
+        if(p.position.y>canvas.height){invaderProjectiles.splice(i,1);continue;}
+        p.update();
+
+        // Barrier Collision (Invader Bullets)
+        let hitBarrier = false;
+        for(let bIndex=barriers.length-1; bIndex>=0; bIndex--){
+            const b = barriers[bIndex];
+            if(projectileHitsRect(p, b)){
+                b.health -= 10;
+                createExplosion(b, '#0f0', 5);
+                invaderProjectiles.splice(i,1);
+                hitBarrier = true;
+                break;
+            }
+        }
+        if(hitBarrier) continue;
+
+        if(p.position.y+p.radius>player.position.y&&p.position.x>player.position.x&&p.position.x<player.position.x+player.width){
+            invaderProjectiles.splice(i,1);
+            if(absorbShieldHit()){
+                play(sounds.hit);
+                continue;
+            }
+            player.lives--; 
+            player.fullAuto = false; // Lose full auto on death
+            play(sounds.playerhit); 
+            createExplosion(player,'#0f0',40);
+            if(player.lives<=0) endGame();
+            else player.position.x=canvas.width/2-player.width/2;
+            updateUI();
+        }
+    }
+
+    ctx.restore();
+    
+    // Continue game loop
+    requestAnimationFrame(animate);
+}
+
+// ============================================
+// CONTROLS (KEYBOARD & MOUSE)
+// Handle player input
+// ============================================
+
+// Mouse movement handler
+canvas.addEventListener('mousemove', e => {
+    if(!gameActive || gamePaused || !player) return;
+    
+    // Get mouse position relative to canvas using cached rect
+    const mouseX = (e.clientX - canvasRect.left) * canvasScaleX;
+    
+    // Center player on mouse position, clamped to screen bounds
+    player.position.x = Math.max(0, Math.min(canvas.width - player.width, mouseX - player.width/2));
+});
+
+// Mouse click handler (Shoot)
+canvas.addEventListener('mousedown', e => {
+    if(!gameActive || gamePaused) return;
+    e.preventDefault();
+    keys.space.pressed = true; // Treat as holding space
+});
+
+canvas.addEventListener('mouseup', e => {
+    keys.space.pressed = false;
+});
+
+// Key press handler
+window.addEventListener('keydown',e=>{
+    // ESC key - toggle pause
+    if(e.key==='Escape'){
+        if(gameActive){
+            e.preventDefault();
+            togglePause();
+        }
+        return;
+    }
+    
+    // Don't process other keys if game not active or paused
+    if(!gameActive || gamePaused) return;
+    
+    // A key or Left Arrow - move left
+    if(e.key==='a'||e.key==='A' || e.key==='ArrowLeft'){ 
+        e.preventDefault(); 
+        keys.a.pressed=true; 
+    }
+    
+    // D key or Right Arrow - move right
+    if(e.key==='d'||e.key==='D' || e.key==='ArrowRight'){ 
+        e.preventDefault(); 
+        keys.d.pressed=true; 
+    }
+    
+    // Space bar - shoot
+    if(e.key===' '){
+        e.preventDefault();
+        keys.space.pressed=true;
+    }
+});
+
+// Key release handler
+window.addEventListener('keyup',e=>{
+    // Release movement keys
+    if(e.key==='a'||e.key==='A' || e.key==='ArrowLeft') keys.a.pressed=false;
+    if(e.key==='d'||e.key==='D' || e.key==='ArrowRight') keys.d.pressed=false;
+    if(e.key===' ') keys.space.pressed=false;
+});
+
+// ============================================
+// INITIAL UI UPDATE
+// Display starting values
+// ============================================
+
+updateUI();
+</script>
+</body>
+</html>
